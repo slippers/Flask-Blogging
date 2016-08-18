@@ -3,10 +3,15 @@ try:
 except ImportError:
     pass
 import logging
-import sqlalchemy as sqla
-import datetime
-from .storage import Storage
-from .signals import sqla_initialized
+from ..storage import Storage
+from ..signals import sqla_initialized
+from .models import (
+    Post,
+    Tag,
+    Tag_Posts,
+    User_Posts,
+    build_model
+)
 
 
 class SQLAStorage(Storage):
@@ -15,70 +20,40 @@ class SQLAStorage(Storage):
     class. This  class uses SQLAlchemy to implement storage and retrieval of
     data from any of the databases supported by SQLAlchemy.
     """
-    _db = None
     _logger = logging.getLogger("flask-blogging")
 
-    def __init__(self, engine=None, table_prefix="", metadata=None, db=None,
-                 bind=None):
+    def __init__(self, table_prefix="", db=None, bind=None):
         """
         The constructor for the ``SQLAStorage`` class.
 
-        :param engine: The ``SQLAlchemy`` engine instance created by calling
-        ``create_engine``. One can also use Flask-SQLAlchemy, and pass the
-        engine property.
-        :type engine: object
         :param table_prefix: (Optional) Prefix to use for the tables created
          (default ``""``).
         :type table_prefix: str
-        :param metadata: (Optional) The SQLAlchemy MetaData object
-        :type metadata: object
         :param db: (Optional) The Flask-SQLAlchemy SQLAlchemy object
         :type db: object
         :param bind: (Optional) Reference the database to bind for multiple
         database scenario with binds
         :type bind: str
         """
+
+        if db is None:
+            raise ValueError('db is required')
+
+        self._db = db
         self._bind = bind
-        if db:
-            self._engine = db.get_engine(db.get_app(), bind=self._bind)
-            self._metadata = db.metadata
-        else:
-            if engine is None:
-                raise ValueError("Both db and engine args cannot be None")
-            self._engine = engine
-            self._metadata = metadata or sqla.MetaData()
-        self._info = {} if self._bind is None else {"bind_key": self._bind}
-        self._table_prefix = table_prefix
-        self._metadata.reflect(bind=self._engine)
-        self._create_all_tables()
-        sqla_initialized.send(self, engine=self._engine,
-                              table_prefix=self._table_prefix,
-                              meta=self.metadata,
-                              bind=self._bind)
 
-    @property
-    def metadata(self):
-        return self._metadata
+        info = {}
+        if self._bind is not None:
+            info.update({"__bind_key__": bind})
+        if table_prefix is not None:
+            info.update({'__prefix__': table_prefix})
 
-    @property
-    def post_table(self):
-        return self._post_table
+        self._post = build_model(Post, info)
+        self._tag = build_model(Tag, info)
+        self._tag_posts = build_model(Tag_Posts, info)
+        self._user_posts = build_model(User_Posts, info)
 
-    @property
-    def tag_table(self):
-        return self._tag_table
-
-    @property
-    def tag_posts_table(self):
-        return self._tag_posts_table
-
-    @property
-    def user_posts_table(self):
-        return self._user_posts_table
-
-    @property
-    def engine(self):
-        return self._engine
+        self._db.create_all()
 
     def save_post(self, title, text, user_id, tags, draft=False,
                   post_date=None, last_modified_date=None, meta_data=None,
@@ -110,42 +85,30 @@ class SQLAStorage(Storage):
          and a valid value for update. (default ``None``)
         :type post_id: int
 
-        :return: The post_id value, in case of a successful insert or update.
+        :return: The post_id  value, in case of a successful insert or update.
          Return ``None`` if there were errors.
         """
-        new_post = post_id is None
-        current_datetime = datetime.datetime.utcnow()
-        draft = 1 if draft is True else 0
-        post_date = post_date if post_date is not None else current_datetime
-        last_modified_date = last_modified_date if last_modified_date is not \
-            None else current_datetime
 
-        with self._engine.begin() as conn:
-            try:
-                if post_id is not None:  # validate post_id
-                    exists_statement = sqla.select([self._post_table]).where(
-                        self._post_table.c.id == post_id)
-                    exists = \
-                        conn.execute(exists_statement).fetchone() is not None
-                    post_id = post_id if exists else None
-                post_statement = \
-                    self._post_table.insert() if post_id is None else \
-                    self._post_table.update().where(
-                        self._post_table.c.id == post_id)
-                post_statement = post_statement.values(
-                    title=title, text=text, post_date=post_date,
-                    last_modified_date=last_modified_date, draft=draft
-                )
+        try:
+            if post_id is None:
+                post = Post(title, text, draft, post_date, last_modified_date)
+                self._db.session.add(post)
+            else:
+                post = Post.query.filter_by(id=post_id).first()
+                if post is None:
+                    raise ValueError('post id invalid.')
+                post.update(title, text, draft, post_date, last_modified_date)
 
-                post_result = conn.execute(post_statement)
-                post_id = post_result.inserted_primary_key[0] \
-                    if post_id is None else post_id
-                self._save_tags(tags, post_id, conn)
-                self._save_user_post(user_id, post_id, conn)
+            self._db.session.commit()
+            post_id = post.id
+            self._save_tags(tags, post_id)
+            self._save_user_post(user_id, post_id)
+        except Exception as e:
+            self._logger.exception(str(e))
+            post_id = None
+            self._db.session.rollback()
+            raise
 
-            except Exception as e:
-                self._logger.exception(str(e))
-                post_id = None
         return post_id
 
     def get_post_by_id(self, post_id):
@@ -334,6 +297,26 @@ class SQLAStorage(Storage):
         tags = self.normalize_tags(tags)
         tag_ids = []
 
+        # get Tag for tags already stored
+        current = self._db.session.query(Tag).filter(Tag.text._in(tags)).all()
+        current_tags = [tag for tag in current.text]
+
+        # tags not found
+        new_tags = set(current_tags) - set(tags)
+
+        # store tags that were not found
+        tag_objects = [Tag(tag) for tag in new_tags]
+        self._db.session.bulk_save_objects(tag_objects)
+        self._db.session.commit()
+
+        # get Tag_Posts for current post_id
+        tag_posts = self._db.session.query(Tag_Posts).filter(Tag_Posts.post_id == post_id).all()
+
+
+
+        # associated tag.id in tag_posts
+        # delete tags in tag_posts not associated
+
         for tag in tags:  # iterate over given tags
             try:
                 # check if the tag exists
@@ -414,128 +397,3 @@ class SQLAStorage(Storage):
                     conn.execute(statement)
                 except Exception as e:
                     self._logger.exception(str(e))
-
-    def _table_name(self, table_name):
-        return self._table_prefix + table_name
-
-    def _create_all_tables(self):
-        """
-        Creates all the required tables by calling the required functions.
-        :return:
-        """
-        self._create_post_table()
-        self._create_tag_table()
-        self._create_tag_posts_table()
-        self._create_user_posts_table()
-
-    def _create_post_table(self):
-        """
-        Creates the table to store the blog posts.
-        :return:
-        """
-        with self._engine.begin() as conn:
-            post_table_name = self._table_name("post")
-            if not conn.dialect.has_table(conn, post_table_name):
-
-                self._post_table = sqla.Table(
-                    post_table_name, self._metadata,
-                    sqla.Column("id", sqla.Integer, primary_key=True),
-                    sqla.Column("title", sqla.String(256)),
-                    sqla.Column("text", sqla.Text),
-                    sqla.Column("post_date", sqla.DateTime),
-                    sqla.Column("last_modified_date", sqla.DateTime),
-                    # if 1 then make it a draft
-                    sqla.Column("draft", sqla.SmallInteger, default=0),
-                    info=self._info
-
-                )
-                self._logger.debug("Created table with table name %s" %
-                                   post_table_name)
-            else:
-                self._post_table = self._metadata.tables[post_table_name]
-                self._logger.debug("Reflecting to table with table name %s" %
-                                   post_table_name)
-
-    def _create_tag_table(self):
-        """
-        Creates the table to store blog post tags.
-        :return:
-        """
-        with self._engine.begin() as conn:
-            tag_table_name = self._table_name("tag")
-            if not conn.dialect.has_table(conn, tag_table_name):
-                self._tag_table = sqla.Table(
-                    tag_table_name, self._metadata,
-                    sqla.Column("id", sqla.Integer, primary_key=True),
-                    sqla.Column("text", sqla.String(128), unique=True,
-                                index=True),
-                    info=self._info
-                )
-                self._logger.debug("Created table with table name %s" %
-                                   tag_table_name)
-            else:
-                self._tag_table = self._metadata.tables[tag_table_name]
-                self._logger.debug("Reflecting to table with table name %s" %
-                                   tag_table_name)
-
-    def _create_tag_posts_table(self):
-        """
-        Creates the table to store association info between blog posts and
-        tags.
-        :return:
-        """
-        with self._engine.begin() as conn:
-            tag_posts_table_name = self._table_name("tag_posts")
-            if not conn.dialect.has_table(conn, tag_posts_table_name):
-                tag_id_key = self._table_name("tag") + ".id"
-                post_id_key = self._table_name("post") + ".id"
-                self._tag_posts_table = sqla.Table(
-                    tag_posts_table_name, self._metadata,
-                    sqla.Column('tag_id', sqla.Integer,
-                                sqla.ForeignKey(tag_id_key, onupdate="CASCADE",
-                                                ondelete="CASCADE"),
-                                index=True),
-                    sqla.Column('post_id', sqla.Integer,
-                                sqla.ForeignKey(post_id_key,
-                                                onupdate="CASCADE",
-                                                ondelete="CASCADE"),
-                                index=True),
-                    sqla.UniqueConstraint('tag_id', 'post_id', name='uix_1'),
-                    info=self._info
-                )
-                self._logger.debug("Created table with table name %s" %
-                                   tag_posts_table_name)
-            else:
-                self._tag_posts_table = \
-                    self._metadata.tables[tag_posts_table_name]
-                self._logger.debug("Reflecting to table with table name %s" %
-                                   tag_posts_table_name)
-
-    def _create_user_posts_table(self):
-        """
-        Creates the table to store association info between user and blog
-        posts.
-        :return:
-        """
-        with self._engine.begin() as conn:
-            user_posts_table_name = self._table_name("user_posts")
-            if not conn.dialect.has_table(conn, user_posts_table_name):
-                post_id_key = self._table_name("post") + ".id"
-                self._user_posts_table = sqla.Table(
-                    user_posts_table_name, self._metadata,
-                    sqla.Column("user_id", sqla.String(128), index=True),
-                    sqla.Column("post_id", sqla.Integer,
-                                sqla.ForeignKey(post_id_key,
-                                                onupdate="CASCADE",
-                                                ondelete="CASCADE"),
-                                index=True),
-                    sqla.UniqueConstraint('user_id', 'post_id', name='uix_2'),
-                    info=self._info
-                )
-                self._logger.debug("Created table with table name %s" %
-                                   user_posts_table_name)
-            else:
-                self._user_posts_table = \
-                    self._metadata.tables[user_posts_table_name]
-                self._logger.debug("Reflecting to table with table name %s" %
-                                   user_posts_table_name)
