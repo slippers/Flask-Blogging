@@ -3,16 +3,18 @@ try:
 except ImportError:
     pass
 import logging
+from sqlalchemy import select, desc, func, and_, not_
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import IntegrityError
 from ..storage import Storage
 from ..signals import sqla_initialized
 from .models import (
     Post,
     Tag,
     Tag_Posts,
-    User_Posts,
-    build_model
+    User_Posts
 )
-
+from . import Base
 
 class SQLAStorageModel(Storage):
     """
@@ -22,38 +24,24 @@ class SQLAStorageModel(Storage):
     """
     _logger = logging.getLogger("flask-blogging")
 
-    def __init__(self, table_prefix="", db=None, bind=None):
+    def __init__(self, engine=None):
         """
         The constructor for the ``SQLAStorage`` class.
-
-        :param table_prefix: (Optional) Prefix to use for the tables created
-         (default ``""``).
         :type table_prefix: str
-        :param db: (Optional) The Flask-SQLAlchemy SQLAlchemy object
-        :type db: object
-        :param bind: (Optional) Reference the database to bind for multiple
-        database scenario with binds
-        :type bind: str
+        :param engine: The SQLAlchemy engine object
         """
 
-        if db is None:
-            raise ValueError('db is required')
+        if engine is None:
+            raise ValueError('engine is required')
 
-        self._db = db
-        self._bind = bind
+        self._engine = engine
 
-        info = {}
-        if self._bind is not None:
-            info.update({"__bind_key__": bind})
-        if table_prefix is not None:
-            info.update({'__prefix__': table_prefix})
+        Session = sessionmaker(bind=engine)
 
-        self._post = build_model(Post, info)
-        self._tag = build_model(Tag, info)
-        self._tag_posts = build_model(Tag_Posts, info)
-        self._user_posts = build_model(User_Posts, info)
+        self._session = Session()
 
-        self._db.create_all()
+        # the models have inherited Base, we have imported base from there.
+        Base.metadata.create_all(engine)
 
     def save_post(self, title, text, user_id, tags, draft=False,
                   post_date=None, last_modified_date=None, meta_data=None,
@@ -84,29 +72,31 @@ class SQLAStorageModel(Storage):
          for an insert call,
          and a valid value for update. (default ``None``)
         :type post_id: int
-
         :return: The post_id  value, in case of a successful insert or update.
          Return ``None`` if there were errors.
         """
 
+        tags = self.normalize_tags(tags)
+
         try:
             if post_id is None:
                 post = Post(title, text, draft, post_date, last_modified_date)
-                self._db.session.add(post)
+                self._session.add(post)
             else:
                 post = Post.query.filter_by(id=post_id).first()
                 if post is None:
                     raise ValueError('post id invalid.')
                 post.update(title, text, draft, post_date, last_modified_date)
 
-            self._db.session.commit()
+            self._session.commit()
             post_id = post.id
-            self._save_tags(tags, post_id)
+            self._save_tags(tags)
+            self._save_tag_posts(tags, post_id)
             self._save_user_post(user_id, post_id)
         except Exception as e:
             self._logger.exception(str(e))
             post_id = None
-            self._db.session.rollback()
+            self._session.rollback()
             raise
 
         return post_id
@@ -292,108 +282,86 @@ class SQLAStorageModel(Storage):
         sql_filter = sqla.and_(*filters)
         return sql_filter
 
-    def _save_tags(self, tags, post_id, conn):
+    def _save_tags(self, tags):
 
-        tags = self.normalize_tags(tags)
         tag_ids = []
 
         # get Tag for tags already stored
-        current = self._db.session.query(Tag).filter(Tag.text._in(tags)).all()
-        current_tags = [tag for tag in current.text]
+        current = self._session.query(Tag).filter(Tag.text.in_(tags)).all()
+        current_tags = [tag.text for tag in current]
 
-        # tags not found
-        new_tags = set(current_tags) - set(tags)
+        # subtract tags current from tags that are new. 
+        new_tags = set(tags) - set(current_tags)
 
         # store tags that were not found
         tag_objects = [Tag(tag) for tag in new_tags]
-        self._db.session.bulk_save_objects(tag_objects)
-        self._db.session.commit()
 
-        # get Tag_Posts for current post_id
-        tag_posts = self._db.session.query(Tag_Posts).filter(Tag_Posts.post_id == post_id).all()
+        if not tag_objects:
+            return
 
-
-
-        # associated tag.id in tag_posts
-        # delete tags in tag_posts not associated
-
-        for tag in tags:  # iterate over given tags
-            try:
-                # check if the tag exists
-                statement = self._tag_table.select().where(
-                    self._tag_table.c.text == tag)
-                tag_result = conn.execute(statement).fetchone()
-                if tag_result is None:
-                    # insert if it is a new tag
-                    tag_insert_statement = self._tag_table.insert().\
-                        values(text=tag)
-                    result = conn.execute(tag_insert_statement)
-                    tag_id = result.inserted_primary_key[0]
-                else:
-                    # tag already exists
-                    tag_id = tag_result[0]
-
-            except sqla.exc.IntegrityError as e:
-                # some database error occurred;
-                tag_id = None
-                self._logger.exception(str(e))
-
-            except Exception as e:
-                # unknown exception occurred
-                tag_id = None
-                self._logger.exception(str(e))
-
-            if tag_id is not None:
-                # for a valid tag_id
-                tag_ids.append(tag_id)
-
-                try:
-                    # check if given post has tag given by tag_id
-                    statement = self._tag_posts_table.select().where(
-                        sqla.and_(self._tag_posts_table.c.tag_id == tag_id,
-                                  self._tag_posts_table.c.post_id == post_id))
-                    tag_post_result = conn.execute(statement).fetchone()
-
-                    if tag_post_result is None:
-                        # if tag_id not present for the post given by post_id
-                        tag_post_statement = self._tag_posts_table.insert().\
-                            values(tag_id=tag_id, post_id=post_id)
-                        conn.execute(tag_post_statement)
-
-                except sqla.exc.IntegrityError as e:
-                    self._logger.exception(str(e))
-                except Exception as e:
-                    self._logger.exception(str(e))
         try:
-            # remove tags that have been deleted
-            statement = self._tag_posts_table.delete().where(
-                sqla.and_(sqla.not_(
-                    self._tag_posts_table.c.tag_id.in_(tag_ids)),
-                    self._tag_posts_table.c.post_id == post_id
-                )
-            )
-            conn.execute(statement)
+            self._session.bulk_save_objects(tag_objects)
+            self._session.commit()
+        except IntegrityError as e:
+            # some database error occurred;
+            self._logger.exception(str(e))
         except Exception as e:
+            # unknown exception occurred
             self._logger.exception(str(e))
 
-    def _save_user_post(self, user_id, post_id, conn):
+    def _save_tag_posts(self, tags, post_id):
+        # get tag records
+        tag_result = self._session.query(Tag).filter(Tag.text.in_(tags)).all()
+
+        # get Tag_Posts for current post_id
+        tag_posts_result = self._session.query(Tag_Posts) \
+                .filter(Tag_Posts.post_id == post_id).all()
+
+        # delete tag_posts
+        tag_id_set = [tag.id for tag in tag_result]
+        tag_post_id_set = [tag_post.tag_id for tag_post in tag_posts_result]
+        delete_tag = set(tag_post_id_set) - set(tag_id_set)
+
+        # new tag_posts
+        new_tag_posts = []
+        for tag in tag_result:
+            for tag_post in tag_posts_result:
+                if tag_post.tag_id == tag.id:
+                    continue
+            new_tag_posts.append(Tag_Posts(tag_id=tag.id, post_id=post_id))
+
+        # perform delete and insert
+        try:
+            if delete_tag:
+                self._session.query(Tag_Posts) \
+                        .filter(Tag_Posts.post_id==post_id) \
+                        .filter(Tag_Posts.tag_id.in_(delete_tag)) \
+                        .delete()
+            if new_tag_posts:
+                self._session.bulk_save_objects(new_tag_posts)
+            self._session.commit()
+        except IntegrityError as e:
+            # some database error occurred;
+            self._logger.exception(str(e))
+        except Exception as e:
+            # unknown exception occurred
+            self._logger.exception(str(e))
+
+    def _save_user_post(self, user_id, post_id):
         user_id = str(user_id)
-        statement = sqla.select([self._user_posts_table]).where(
-            self._user_posts_table.c.post_id == post_id)
-        result = conn.execute(statement).fetchone()
-        if result is None:
-            try:
-                statement = self._user_posts_table.insert().values(
-                    user_id=user_id, post_id=post_id)
-                conn.execute(statement)
-            except Exception as e:
-                self._logger.exception(str(e))
-        else:
-            if result[0] != user_id:
-                try:
-                    statement = self._user_posts_table.update().where(
-                        self._user_posts_table.c.post_id == post_id). \
-                        values(user_id=user_id)
-                    conn.execute(statement)
-                except Exception as e:
-                    self._logger.exception(str(e))
+        user_posts = self._session.query(User_Posts) \
+                .filter(User_Posts.post_id==post_id) \
+                .first()
+        try:
+            if not user_posts:
+                new_user_posts = User_Posts(user_id=user_id, post_id=post_id)
+                self._session.add(new_user_posts)
+            else:
+                user_posts.update(user_id)
+            self._session.commit()
+        except IntegrityError as e:
+            # some database error occurred;
+            self._logger.exception(str(e))
+        except Exception as e:
+            # unknown exception occurred
+            self._logger.exception(str(e))
