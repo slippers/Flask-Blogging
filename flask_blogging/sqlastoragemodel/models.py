@@ -1,47 +1,29 @@
 import datetime
-from . import db
+from sqlalchemy import (
+    Table, 
+    Column, 
+    Integer, 
+    String, 
+    ForeignKey,
+    Text,
+    DateTime,
+    SmallInteger,
+    PrimaryKeyConstraint
+)
 from sqlalchemy.ext.declarative import declared_attr
+from . import Base
 
 
-def build_model(cls, info={}):
-    """
-    this is a dynamic type constructor
-    passing in the class type and a hash of name value pairs
-    class is constructed and properties set
-    """
-    return type(cls.__name__, (cls,), info)
-
-
-class DynamicName(object):
-    """
-    a base class to implement naming of the model's tablename
-    used to override the default tablename with a prefix
-    in cases where the same model will be used to generate
-    multiple of itself.
-    """
-    __prefix__ = None
-
-    def _tablename(tablename, prefix):
-        if prefix is None:
-            return tablename.lower()
-        else:
-            return prefix.lower() + tablename.lower()
-
-    @declared_attr
-    def __tablename__(cls):
-        return cls._tablename(cls.__name__, cls.__prefix__)
-
-
-class Post(DynamicName, db.Model):
-    __abstract__ = True
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(256))
-    text = db.Column(db.Text)
-    post_date = db.Column(db.DateTime)
-    last_modified_date = db.Column(db.DateTime)
+class Post(Base):
+    __tablename__ = 'post'
+    id = Column(Integer, primary_key=True)
+    title = Column(String(256))
+    text = Column(Text)
+    post_date = Column(DateTime)
+    last_modified_date = Column(DateTime)
 
     # if 1 then make it a draft
-    draft = db.Column(db.SmallInteger, default=0)
+    draft = Column(SmallInteger, default=0)
 
     def __init__(self, title, text,
                  draft=False,
@@ -68,48 +50,55 @@ class Post(DynamicName, db.Model):
         self.draft = 1 if draft is True else 0
 
 
-class Tag(DynamicName, db.Model):
-    __abstract__ = True
-    id = db.Column(db.Integer, primary_key=True)
-    text = db.Column(db.String(128), unique=True, index=True)
+class Tag(Base):
+    __tablename__ = 'tag'
+    id = Column(Integer, primary_key=True)
+    text = Column(String(128), unique=True, index=True)
 
     def __init__(self, text):
         self.text = text.upper()
 
-class Tag_Posts(DynamicName, db.Model):
-    __abstract__ = True
-    __table_args__ = (
-        db.PrimaryKeyConstraint('tag_id', 'post_id', name='uix_1'),)
 
+class Tag_Posts(Base):
+    __tablename__ = 'tag_posts'
+    __table_args__ = (
+        PrimaryKeyConstraint('tag_id', 'post_id', name='uix_1'),)
+
+    def __init__(self, post_id, tag_id):
+        self.post_id = post_id
+        self.tag_id = tag_id
+
+    @declared_attr
+    def post_id(cls):
+        key = 'post.id'
+        return Column(Integer,
+                         ForeignKey(key,
+                                       onupdate="CASCADE",
+                                       ondelete="CASCADE"), index=True)
     @declared_attr
     def tag_id(cls):
-        key = cls._tablename('tag', cls.__prefix__) + '.id'
-        return db.Column(db.Integer,
-                         db.ForeignKey(key,
-                                       onupdate="CASCADE",
-                                       ondelete="CASCADE"), index=True)
-
-    @declared_attr
-    def post_id(cls):
-        key = cls._tablename('post', cls.__prefix__) + '.id'
-        return db.Column(db.Integer,
-                         db.ForeignKey(key,
+        key = 'tag.id'
+        return Column(Integer,
+                         ForeignKey(key,
                                        onupdate="CASCADE",
                                        ondelete="CASCADE"), index=True)
 
 
-class User_Posts(DynamicName, db.Model):
-    __abstract__ = True
+class User_Posts(Base):
+    __tablename__ = 'user_posts'
     __table_args__ = (
-        db.PrimaryKeyConstraint('user_id', 'post_id', name='uix_2'),
+        PrimaryKeyConstraint('user_id', 'post_id', name='uix_2'),
     )
 
-    user_id = db.Column(db.String(128), index=True)
+    user_id = Column(String(128), index=True)
 
     @declared_attr
     def post_id(cls):
-        key = cls._tablename('post', cls.__prefix__) + '.id'
-        return db.Column(db.Integer,
-                         db.ForeignKey(key,
+        key = 'post.id'
+        return Column(Integer,
+                         ForeignKey(key,
                                        onupdate="CASCADE",
                                        ondelete="CASCADE"), index=True)
+
+    def update(self, user_id):
+        self.user_id = user_id
