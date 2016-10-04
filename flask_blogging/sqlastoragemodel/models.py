@@ -1,15 +1,16 @@
 import datetime
 from sqlalchemy import (
-    Table, 
-    Column, 
-    Integer, 
-    String, 
+    Table,
+    Column,
+    Integer,
+    String,
     ForeignKey,
     Text,
     DateTime,
     SmallInteger,
     PrimaryKeyConstraint
 )
+from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declared_attr
 from . import Base
 
@@ -24,6 +25,15 @@ class Post(Base):
 
     # if 1 then make it a draft
     draft = Column(SmallInteger, default=0)
+
+    tag_posts = relationship('Tag_Posts',
+                             back_populates='post',
+                             cascade="all, delete-orphan")
+
+    user_posts = relationship('User_Posts',
+                              uselist=False,
+                              back_populates='post',
+                              cascade="all, delete-orphan")
 
     def __init__(self, title, text,
                  draft=False,
@@ -61,44 +71,29 @@ class Tag(Base):
 
 class Tag_Posts(Base):
     __tablename__ = 'tag_posts'
-    __table_args__ = (
-        PrimaryKeyConstraint('tag_id', 'post_id', name='uix_1'),)
+#    __table_args__ = (
+#        PrimaryKeyConstraint('tag_id', 'post_id', name='uix_1'),)
+
+    tag_id = Column(Integer, ForeignKey('tag.id', ondelete='CASCADE'), primary_key=True )
+    tag = relationship('Tag', backref='tag')
+
+    post_id = Column(Integer, ForeignKey('post.id', ondelete='CASCADE'), primary_key=True)
+    post = relationship('Post', backref='post')
+
 
     def __init__(self, post_id, tag_id):
         self.post_id = post_id
         self.tag_id = tag_id
 
-    @declared_attr
-    def post_id(cls):
-        key = 'post.id'
-        return Column(Integer,
-                         ForeignKey(key,
-                                       onupdate="CASCADE",
-                                       ondelete="CASCADE"), index=True)
-    @declared_attr
-    def tag_id(cls):
-        key = 'tag.id'
-        return Column(Integer,
-                         ForeignKey(key,
-                                       onupdate="CASCADE",
-                                       ondelete="CASCADE"), index=True)
-
-
 class User_Posts(Base):
     __tablename__ = 'user_posts'
-    __table_args__ = (
-        PrimaryKeyConstraint('user_id', 'post_id', name='uix_2'),
-    )
+#    __table_args__ = (
+#        PrimaryKeyConstraint('user_id', 'post_id', name='uix_2'),
+#    )
 
-    user_id = Column(String(128), index=True)
-
-    @declared_attr
-    def post_id(cls):
-        key = 'post.id'
-        return Column(Integer,
-                         ForeignKey(key,
-                                       onupdate="CASCADE",
-                                       ondelete="CASCADE"), index=True)
+    user_id = Column(String(128), index=True, primary_key=True)
+    post_id = Column(Integer, ForeignKey('post.id', ondelete='CASCADE'), primary_key=True )
+    post = relationship('Post')
 
     def update(self, user_id):
         self.user_id = user_id
