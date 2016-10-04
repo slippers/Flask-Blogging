@@ -79,13 +79,15 @@ class SQLAStorageModel(Storage):
         tags = self.normalize_tags(tags)
 
         try:
-            if post_id is None:
+            # validate post_id
+            post = self._session.query(Post).filter(Post.id==post_id).one_or_none()
+
+            post_id_exists = post is not None
+
+            if not post_id_exists:
                 post = Post(title, text, draft, post_date, last_modified_date)
                 self._session.add(post)
             else:
-                post = Post.query.filter_by(id=post_id).first()
-                if post is None:
-                    raise ValueError('post id invalid.')
                 post.update(title, text, draft, post_date, last_modified_date)
 
             self._session.commit()
@@ -108,39 +110,27 @@ class SQLAStorageModel(Storage):
         :param post_id: The post identifier for the blog post
         :type post_id: int
         :return: If the ``post_id`` is valid, the post data is retrieved, else
-         returns ``None``.
+          returns ``None``.
         """
+
         r = None
-        with self._engine.begin() as conn:
-            try:
-                post_statement = sqla.select([self._post_table]).where(
-                    self._post_table.c.id == post_id
-                )
-                post_result = conn.execute(post_statement).fetchone()
-                if post_result is not None:
-                    r = dict(post_id=post_result[0], title=post_result[1],
-                             text=post_result[2], post_date=post_result[3],
-                             last_modified_date=post_result[4],
-                             draft=post_result[5])
-                    # get the tags
-                    tag_statement = sqla.select([self._tag_table.c.text]). \
-                        where(
-                            sqla.and_(
-                                self._tag_table.c.id ==
-                                self._tag_posts_table.c.tag_id,
-                                self._tag_posts_table.c.post_id == post_id))
-                    tag_result = conn.execute(tag_statement).fetchall()
-                    r["tags"] = [t[0] for t in tag_result]
-                    # get the user
-                    user_statement = sqla.select([
-                        self._user_posts_table.c.user_id]).where(
-                        self._user_posts_table.c.post_id == post_id
-                    )
-                    user_result = conn.execute(user_statement).fetchone()
-                    r["user_id"] = user_result[0]
-            except Exception as e:
-                self._logger.exception(str(e))
-                r = None
+
+        post = self._session.query(Post).filter(Post.id == post_id).one_or_none()
+
+        if not post:
+            return r
+
+        r = dict(post_id=post.id,
+                 title=post.title,
+                 text=post.text,
+                 post_date=post.post_date,
+                 last_modified_date=post.last_modified_date,
+                 draft=post.draft)
+
+        r["tags"] = [tag_posts.tag.text for tag_posts in post.tag_posts]
+
+        r["user_id"] = post.user_posts.user_id
+
         return r
 
     def get_posts(self, count=10, offset=0, recent=True, tag=None,
@@ -166,15 +156,14 @@ class SQLAStorageModel(Storage):
          last_modified_date). If count is ``None``, then all the posts are
          returned.
         """
-        ordering = sqla.desc(self._post_table.c.post_date) if recent \
-            else self._post_table.c.post_date
+        ordering = desc(Post.post_date) if recent \
+            else Post.post_date
         user_id = str(user_id) if user_id else user_id
 
         with self._engine.begin() as conn:
             try:
                 select_statement = sqla.select([self._post_table.c.id])
-                sql_filter = self._get_filter(tag, user_id, include_draft,
-                                              conn)
+                sql_filter = self._get_filter(tag, user_id, include_draft)
 
                 if sql_filter is not None:
                     select_statement = select_statement.where(sql_filter)
@@ -204,13 +193,14 @@ class SQLAStorageModel(Storage):
         :type include_draft: bool
         :return: The number of posts for the given filter.
         """
+        xray = self._session.query(Post, func.count())
+
         result = 0
         with self._engine.begin() as conn:
             try:
-                count_statement = sqla.select([sqla.func.count()]). \
-                    select_from(self._post_table)
-                sql_filter = self._get_filter(tag, user_id, include_draft,
-                                              conn)
+                count_statement = select([func.count()]). \
+                    select_from(Post)
+                sql_filter = self._get_filter(tag, user_id, include_draft)
                 count_statement = count_statement.where(sql_filter)
                 result = conn.execute(count_statement).scalar()
             except Exception as e:
@@ -227,59 +217,46 @@ class SQLAStorageModel(Storage):
         :return: Returns True if the post was successfully deleted and False
          otherwise.
         """
-        status = False
-        success = 0
-        with self._engine.begin() as conn:
-            try:
-                post_del_statement = self._post_table.delete().where(
-                    self._post_table.c.id == post_id)
-                conn.execute(post_del_statement)
-                success += 1
-            except Exception as e:
-                self._logger.exception(str(e))
-            try:
-                user_posts_del_statement = self._user_posts_table.delete(). \
-                    where(self._user_posts_table.c.post_id == post_id)
-                conn.execute(user_posts_del_statement)
-                success += 1
-            except Exception as e:
-                self._logger.exception(str(e))
-            try:
-                tag_posts_del_statement = self._tag_posts_table.delete(). \
-                    where(self._tag_posts_table.c.post_id == post_id)
-                conn.execute(tag_posts_del_statement)
-                success += 1
-            except Exception as e:
-                self._logger.exception(str(e))
-        status = success == 3
-        return status
+        try:
+            post = self._session.query(Post).filter(Post.id == post_id).one_or_none()
+            if post:
+                self._session.delete(post)
+                self._session.commit()
+                return True
+            else:
+                return False
 
-    def _get_filter(self, tag, user_id, include_draft, conn):
+        except Exception as e:
+            self._logger.exception(str(e))
+            return False
+
+    def _get_filter(self, tag, user_id, include_draft):
         filters = []
         if tag:
             tag = tag.upper()
-            tag_statement = sqla.select([self._tag_table.c.id]).where(
-                self._tag_table.c.text == tag)
-            tag_result = conn.execute(tag_statement).fetchone()
-            if tag_result is not None:
-                tag_id = tag_result[0]
-                tag_filter = sqla.and_(
-                    self._tag_posts_table.c.tag_id == tag_id,
-                    self._post_table.c.id == self._tag_posts_table.c.post_id
+            current_tag = self._session.query(Tag).filter(Tag.text == tag).one()
+
+            if current_tag:
+                tag_id = current_tag.id
+                tag_filter = and_(
+                    Tag_Posts.tag_id == tag_id,
+                    Post.id == Tag_Posts.post_id
                 )
                 filters.append(tag_filter)
 
         if user_id:
-            user_filter = sqla.and_(
-                self._user_posts_table.c.user_id == user_id,
-                self._post_table.c.id == self._user_posts_table.c.post_id
+            user_filter = and_(
+                User_Posts.user_id == user_id,
+                Post.id == User_Posts.post_id
+
             )
             filters.append(user_filter)
 
-        draft_filter = self._post_table.c.draft == 1 if include_draft else \
-            self._post_table.c.draft == 0
+        draft_filter = Post.draft == 1 if include_draft else \
+            Post.draft == 0
         filters.append(draft_filter)
-        sql_filter = sqla.and_(*filters)
+        sql_filter = and_(*filters)
+
         return sql_filter
 
     def _save_tags(self, tags):

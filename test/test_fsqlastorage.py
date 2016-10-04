@@ -45,7 +45,6 @@ class TestSQLiteStorage(FlaskBloggingTestCase):
         metadata = MetaData(bind=self._db.engine, reflect=True)
         table = metadata.tables[table_name]
         columns = [t.name for t in table.columns]
-        print('table:', table, 'columns:', columns)
         self.assertListEqual(columns, expected_columns)
 
     def test_post_table_exists(self):
@@ -69,7 +68,7 @@ class TestSQLiteStorage(FlaskBloggingTestCase):
         expected_columns = ['user_id', 'post_id']
         self.check_table(table_name, expected_columns)
 
-    def  test_user_post_table_consistency(self):
+    def test_user_post_table_consistency(self):
         # check if the user post table updates the user_id
         user_id = 1
         post_id = 5
@@ -176,6 +175,7 @@ class TestSQLiteStorage(FlaskBloggingTestCase):
                                      tags=["hello", "world"],
                                      post_id=1)
         p = self.storage.get_post_by_id(pid)
+        print(p)
         self.assertIsNotNone(p)
 
     def test_get_post_by_id(self):
