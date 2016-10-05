@@ -8,6 +8,7 @@ import os
 import flask
 from flask_blogging.sqlastoragemodel.sqlastoragemodel  import SQLAStorageModel
 from sqlalchemy import create_engine, MetaData
+from sqlalchemy.exc import IntegrityError
 from test import FlaskBloggingTestCase
 from flask_sqlalchemy import SQLAlchemy
 import time
@@ -31,7 +32,11 @@ class TestSQLiteStorage(FlaskBloggingTestCase):
         self._dbfile = os.path.join(temp_dir, "temp.db")
         app.config['SQLALCHEMY_DATABASE_URI'] ='sqlite:///'+self._dbfile
         self._db = SQLAlchemy(app)
+
         self.storage = SQLAStorageModel(self._db.engine)
+
+        self.engine = self._db.engine
+        self.metadata = MetaData(bind=self._db.engine, reflect=True)
 
     def setUp(self):
         FlaskBloggingTestCase.setUp(self)
@@ -42,8 +47,7 @@ class TestSQLiteStorage(FlaskBloggingTestCase):
          pass
 
     def check_table(self, table_name, expected_columns):
-        metadata = MetaData(bind=self._db.engine, reflect=True)
-        table = metadata.tables[table_name]
+        table = self.metadata.tables[table_name]
         columns = [t.name for t in table.columns]
         self.assertListEqual(columns, expected_columns)
 
@@ -84,15 +88,14 @@ class TestSQLiteStorage(FlaskBloggingTestCase):
 
     def test_tags_uniqueness(self):
         table_name = "tag"
-        metadata = self._meta
-        table = metadata.tables[table_name]
-        with self._engine.begin() as conn:
+        table = self.metadata.tables[table_name]
+        with self.engine.begin() as conn:
             statement = table.insert().values(text="test_tag")
             conn.execute(statement)
         # reentering same tag should raise exception
-        with self._engine.begin() as conn:
+        with self.engine.begin() as conn:
             statement = table.insert().values(text="test_tag")
-            self.assertRaises(sqla.exc.IntegrityError, conn.execute, statement)
+            self.assertRaises(IntegrityError, conn.execute, statement)
 
     def test_tags_consistency(self):
         # check that when tag is updated, the posts get updated
@@ -100,36 +103,35 @@ class TestSQLiteStorage(FlaskBloggingTestCase):
         pid = self.storage.save_post(title="Title", text="Sample Text",
                                      user_id="user", tags=tags)
         post = self.storage.get_post_by_id(pid)
+        print(pid, post)
         self.assertEqual(len(post["tags"]), 2)
         tags.pop()
         pid = self.storage.save_post(title="Title", text="Sample Text",
                                      user_id="user", tags=tags, post_id=pid)
         post = self.storage.get_post_by_id(pid)
+        print(pid, post)
         self.assertEqual(len(post["tags"]), 1)
 
     def test_tag_post_uniqueness(self):
         self.storage.save_post(title="Title", text="Sample Text",
                                user_id="user", tags=["tags"])
         table_name = "tag_posts"
-        metadata = self._meta
-        table = metadata.tables[table_name]
-        with self._engine.begin() as conn:
+        table = self.metadata.tables[table_name]
+        with self.engine.begin() as conn:
             statement = table.insert().values(tag_id=1, post_id=1)
-            self.assertRaises(sqla.exc.IntegrityError, conn.execute, statement)
+            self.assertRaises(IntegrityError, conn.execute, statement)
 
-    def test_user_post_uniqueness(self):
+    def test_user_post_uniqueness(self): 
         pid = self.storage.save_post(title="Title1", text="Sample Text",
                                      user_id="testuser",
                                      tags=["hello", "world"])
         table_name = "user_posts"
-        metadata = sqla.MetaData()
-        metadata.reflect(bind=self._engine)
-        table = metadata.tables[table_name]
+        table = self.metadata.tables[table_name]
         # reentering same user should raise exception
-        with self._engine.begin() as conn:
+        with self.engine.begin() as conn:
             statement = table.insert().values(user_id="testuser",
                                               post_id=pid)
-            self.assertRaises(sqla.exc.IntegrityError, conn.execute, statement)
+            self.assertRaises(IntegrityError, conn.execute, statement)
 
     def test_bind_database(self):
         # self.storage._create_all_tables()
@@ -142,6 +144,9 @@ class TestSQLiteStorage(FlaskBloggingTestCase):
         pid = self.storage.save_post(title="Title1", text="Sample Text",
                                      user_id="testuser",
                                      tags=["hello", "world"])
+
+        print(self.storage.get_post_by_id(pid))
+
         pid = self.storage.save_post(title="Title1", text="Sample Text",
                                      user_id="testuser",
                                      tags=["hello", "world"], post_id=1)
@@ -175,7 +180,6 @@ class TestSQLiteStorage(FlaskBloggingTestCase):
                                      tags=["hello", "world"],
                                      post_id=1)
         p = self.storage.get_post_by_id(pid)
-        print(p)
         self.assertIsNotNone(p)
 
     def test_get_post_by_id(self):
