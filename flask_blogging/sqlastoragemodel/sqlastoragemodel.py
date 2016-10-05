@@ -194,19 +194,14 @@ class SQLAStorageModel(Storage):
         :type include_draft: bool
         :return: The number of posts for the given filter.
         """
-        xray = self._session.query(Post, func.count())
-
+        sql_filter = self._get_filter(tag, user_id, include_draft)
         result = 0
-        with self._engine.begin() as conn:
-            try:
-                count_statement = select([func.count()]). \
-                    select_from(Post)
-                sql_filter = self._get_filter(tag, user_id, include_draft)
-                count_statement = count_statement.where(sql_filter)
-                result = conn.execute(count_statement).scalar()
-            except Exception as e:
-                self._logger.exception(str(e))
-                result = 0
+        try:
+            result = self._session.query(func.count(Post.id)) \
+                    .filter(sql_filter) \
+                    .scalar()
+        except Exception as e:
+            self._logger.exception(str(e))
         return result
 
     def delete_post(self, post_id):
