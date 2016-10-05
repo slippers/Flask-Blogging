@@ -156,27 +156,28 @@ class SQLAStorageModel(Storage):
          last_modified_date). If count is ``None``, then all the posts are
          returned.
         """
+        result = []
         ordering = desc(Post.post_date) if recent \
             else Post.post_date
         user_id = str(user_id) if user_id else user_id
 
-        with self._engine.begin() as conn:
-            try:
-                select_statement = sqla.select([self._post_table.c.id])
-                sql_filter = self._get_filter(tag, user_id, include_draft)
+        posts =  self._session.query(Post.id)
 
-                if sql_filter is not None:
-                    select_statement = select_statement.where(sql_filter)
-                if count:
-                    select_statement = select_statement.limit(count)
-                if offset:
-                    select_statement = select_statement.offset(offset)
+        posts = posts.order_by(ordering)
 
-                select_statement = select_statement.order_by(ordering)
-                result = conn.execute(select_statement).fetchall()
-            except Exception as e:
-                self._logger.exception(str(e))
-                result = []
+        sql_filter = self._get_filter(tag, user_id, include_draft)
+
+        if sql_filter is not None:
+            posts = posts.filter(sql_filter)
+        if count:
+            posts = posts.limit(count)
+        if offset:
+            posts = posts.offset(offset)
+
+        try:
+            result = posts.all()
+        except Exception as e:
+            self._logger.exception(str(e))
 
         posts = [self.get_post_by_id(pid[0]) for pid in result]
         return posts
@@ -289,33 +290,29 @@ class SQLAStorageModel(Storage):
     def _save_tag_posts(self, tags, post_id):
         # get tag records
         tag_result = self._session.query(Tag).filter(Tag.text.in_(tags)).all()
+        tag_ids = [tag.id for tag in tag_result]
 
         # get Tag_Posts for current post_id
         tag_posts_result = self._session.query(Tag_Posts) \
                 .filter(Tag_Posts.post_id == post_id).all()
+        tag_post_ids = [tag_post.tag_id for tag_post in tag_posts_result]
 
         # delete tag_posts
-        tag_id_set = [tag.id for tag in tag_result]
-        tag_post_id_set = [tag_post.tag_id for tag_post in tag_posts_result]
-        delete_tag = set(tag_post_id_set) - set(tag_id_set)
+        delete_tag_posts = set(tag_post_ids) - set(tag_ids)
 
         # new tag_posts
-        new_tag_posts = []
-        for tag in tag_result:
-            for tag_post in tag_posts_result:
-                if tag_post.tag_id == tag.id:
-                    continue
-            new_tag_posts.append(Tag_Posts(tag_id=tag.id, post_id=post_id))
-
+        new_tag_posts = set(tag_ids) - set(tag_post_ids)
+        
         # perform delete and insert
         try:
-            if delete_tag:
-                self._session.query(Tag_Posts) \
+            if delete_tag_posts:
+               self._session.query(Tag_Posts) \
                         .filter(Tag_Posts.post_id==post_id) \
-                        .filter(Tag_Posts.tag_id.in_(delete_tag)) \
-                        .delete()
+                        .filter(Tag_Posts.tag_id.in_(list(delete_tag_posts))) \
+                        .delete(synchronize_session=False)
             if new_tag_posts:
-                self._session.bulk_save_objects(new_tag_posts)
+                tag_posts = [Tag_Posts(tag_id=tag, post_id=post_id) for tag in new_tag_posts]
+                self._session.bulk_save_objects(tag_posts)
             self._session.commit()
         except IntegrityError as e:
             # some database error occurred;
@@ -326,10 +323,12 @@ class SQLAStorageModel(Storage):
 
     def _save_user_post(self, user_id, post_id):
         user_id = str(user_id)
-        user_posts = self._session.query(User_Posts) \
-                .filter(User_Posts.post_id==post_id) \
-                .first()
+
         try:
+            user_posts = self._session.query(User_Posts) \
+                    .filter(User_Posts.post_id == post_id) \
+                    .one_or_none()
+
             if not user_posts:
                 new_user_posts = User_Posts(user_id=user_id, post_id=post_id)
                 self._session.add(new_user_posts)
