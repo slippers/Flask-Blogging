@@ -11,12 +11,10 @@ from sqlalchemy import (
     PrimaryKeyConstraint
 )
 from sqlalchemy.orm import relationship
-from sqlalchemy.ext.declarative import declared_attr
 from . import Base
 
 
 class Post(Base):
-    __tablename__ = 'post'
     id = Column(Integer, primary_key=True)
     title = Column(String(256))
     text = Column(Text)
@@ -61,7 +59,6 @@ class Post(Base):
 
 
 class Tag(Base):
-    __tablename__ = 'tag'
     id = Column(Integer, primary_key=True)
     text = Column(String(128), unique=True, index=True)
 
@@ -70,15 +67,11 @@ class Tag(Base):
 
 
 class Tag_Posts(Base):
-    __tablename__ = 'tag_posts'
-#    __table_args__ = (
-#        PrimaryKeyConstraint('tag_id', 'post_id', name='uix_1'),)
-
     tag_id = Column(Integer, ForeignKey('tag.id', ondelete='CASCADE'), primary_key=True )
-    tag = relationship('Tag', backref='tag')
+    tag = relationship(Tag, backref='tag')
 
     post_id = Column(Integer, ForeignKey('post.id', ondelete='CASCADE'), primary_key=True)
-    post = relationship('Post', backref='post')
+    post = relationship(Post, backref='post')
 
 
     def __init__(self, post_id, tag_id):
@@ -86,14 +79,9 @@ class Tag_Posts(Base):
         self.tag_id = tag_id
 
 class User_Posts(Base):
-    __tablename__ = 'user_posts'
-#    __table_args__ = (
-#        PrimaryKeyConstraint('user_id', 'post_id', name='uix_2'),
-#    )
-
     user_id = Column(String(128), index=True, primary_key=True)
     post_id = Column(Integer, ForeignKey('post.id', ondelete='CASCADE'), primary_key=True )
-    post = relationship('Post')
+    post = relationship(Post)
 
     def update(self, user_id):
         self.user_id = user_id

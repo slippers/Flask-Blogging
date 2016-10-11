@@ -24,17 +24,28 @@ class SQLAStorageModel(Storage):
     """
     _logger = logging.getLogger("flask-blogging")
 
-    def __init__(self, engine=None):
+    def __init__(self, engine=None, bind_key=None):
         """
         The constructor for the ``SQLAStorage`` class.
-        :type table_prefix: str
-        :param engine: The SQLAlchemy engine object
+        :param engine: The ``SQLAlchemy`` engine instance created by calling
+        ``create_engine``. One can also use Flask-SQLAlchemy, and pass the
+        engine property.
+        :type engine: object
+        :param bind_key: (Optional) Reference the database to bind for multiple
+        database scenario with binds.
+        :type bind: str
         """
 
         if engine is None:
             raise ValueError('engine is required')
 
         self._engine = engine
+
+        # __bind_key__ is a custom attribute set in the model
+        # it is used by wrapper extentions like flask-sqlalchemy and flask-alchy
+        # to bind the model to a engine connection
+        if bind_key:
+            Base.__bind_key__ = bind_key
 
         Session = sessionmaker(bind=engine)
 
