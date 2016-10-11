@@ -103,13 +103,11 @@ class TestSQLiteStorage(FlaskBloggingTestCase):
         pid = self.storage.save_post(title="Title", text="Sample Text",
                                      user_id="user", tags=tags)
         post = self.storage.get_post_by_id(pid)
-        print(pid, post)
         self.assertEqual(len(post["tags"]), 2)
         tags.pop()
         pid = self.storage.save_post(title="Title", text="Sample Text",
                                      user_id="user", tags=tags, post_id=pid)
         post = self.storage.get_post_by_id(pid)
-        print(pid, post)
         self.assertEqual(len(post["tags"]), 1)
 
     def test_tag_post_uniqueness(self):
@@ -144,8 +142,6 @@ class TestSQLiteStorage(FlaskBloggingTestCase):
         pid = self.storage.save_post(title="Title1", text="Sample Text",
                                      user_id="testuser",
                                      tags=["hello", "world"])
-
-        print(self.storage.get_post_by_id(pid))
 
         pid = self.storage.save_post(title="Title1", text="Sample Text",
                                      user_id="testuser",
@@ -347,23 +343,23 @@ class TestSQLiteBinds(FlaskBloggingTestCase):
         FlaskBloggingTestCase.setUp(self)
 
         temp_dir = tempfile.gettempdir()
-        self._dbfile = os.path.join(temp_dir, "temp.db")
+        self._dbfile = os.path.join(temp_dir, "blog.db")
         conn_string = self._conn_string(self._dbfile)
         self.app.config["SQLALCHEMY_BINDS"] = {
             'blog': conn_string
         }
         self._db = SQLAlchemy(self.app)
-        self.storage = SQLAStorage(db=self._db, bind="blog")
         self._engine = self._db.get_engine(self.app, bind="blog")
+        self.storage = SQLAStorageModel(self._engine, bind_key="blog")
+        self._db.reflect()
         self._meta = self._db.metadata
-        self._db.create_all(bind=["blog"])
 
     def tearDown(self):
         os.remove(self._dbfile)
+        pass
 
     def test_post_table_exists(self):
         table_name = "post"
-        print(self._meta)
         with self._engine.begin() as conn:
             self.assertTrue(conn.dialect.has_table(conn, table_name))
             metadata = self._meta
