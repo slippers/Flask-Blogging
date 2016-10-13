@@ -1,11 +1,10 @@
-import unittest
 from flask import Flask
 from flask_login import UserMixin
 
 __author__ = 'gbalaraman'
 
 
-class FlaskBloggingTestCase(unittest.TestCase):
+class FlaskBloggingTestCase():
 
     def setUp(self):
         self.app = Flask(__name__)

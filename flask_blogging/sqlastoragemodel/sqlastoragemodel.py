@@ -54,6 +54,16 @@ class SQLAStorageModel(Storage):
         # the models have inherited Base, we have imported base from there.
         Base.metadata.create_all(engine)
 
+    def close(self):
+        """
+        each time session.commit() is called an implict transaction is newly created.
+        this sqlalchemy behavior causes an issue with issuing DDL 
+        commands in newer versions of mysql.
+        error 'Waiting for table metadata lock'
+
+        """
+        self._session.close()
+
     def save_post(self, title, text, user_id, tags, draft=False,
                   post_date=None, last_modified_date=None, meta_data=None,
                   post_id=None):
@@ -308,7 +318,7 @@ class SQLAStorageModel(Storage):
 
         # new tag_posts
         new_tag_posts = set(tag_ids) - set(tag_post_ids)
-        
+
         # perform delete and insert
         try:
             if delete_tag_posts:
@@ -316,10 +326,11 @@ class SQLAStorageModel(Storage):
                         .filter(Tag_Posts.post_id==post_id) \
                         .filter(Tag_Posts.tag_id.in_(list(delete_tag_posts))) \
                         .delete(synchronize_session=False)
+               self._session.commit()
             if new_tag_posts:
                 tag_posts = [Tag_Posts(tag_id=tag, post_id=post_id) for tag in new_tag_posts]
                 self._session.bulk_save_objects(tag_posts)
-            self._session.commit()
+                self._session.commit()
         except IntegrityError as e:
             # some database error occurred;
             self._logger.exception(str(e))
@@ -338,9 +349,10 @@ class SQLAStorageModel(Storage):
             if not user_posts:
                 new_user_posts = User_Posts(user_id=user_id, post_id=post_id)
                 self._session.add(new_user_posts)
+                self._session.commit()
             else:
                 user_posts.update(user_id)
-            self._session.commit()
+                self._session.commit()
         except IntegrityError as e:
             # some database error occurred;
             self._logger.exception(str(e))

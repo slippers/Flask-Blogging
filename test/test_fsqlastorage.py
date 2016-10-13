@@ -1,3 +1,4 @@
+import unittest
 try:
     from builtins import range
 except ImportError:
@@ -24,27 +25,17 @@ except ImportError:
     HAS_POSTGRES = False
 
 
-class TestSQLiteStorage(FlaskBloggingTestCase):
+class StorageTestMethods(FlaskBloggingTestCase):
 
     def _create_storage(self):
-        app = flask.Flask(__name__)
-        temp_dir = tempfile.gettempdir()
-        self._dbfile = os.path.join(temp_dir, "temp.db")
-        app.config['SQLALCHEMY_DATABASE_URI'] ='sqlite:///'+self._dbfile
-        self._db = SQLAlchemy(app)
-
-        self.storage = SQLAStorageModel(self._db.engine)
-
-        self.engine = self._db.engine
-        self.metadata = MetaData(bind=self._db.engine, reflect=True)
+        raise NotImplementedError("Subclass must implement abstract method")
 
     def setUp(self):
         FlaskBloggingTestCase.setUp(self)
         self._create_storage()
 
     def tearDown(self):
-         os.remove(self._dbfile)
-         pass
+        raise NotImplementedError("Subclass must implement abstract method")
 
     def check_table(self, table_name, expected_columns):
         table = self.metadata.tables[table_name]
@@ -301,37 +292,59 @@ class TestSQLiteStorage(FlaskBloggingTestCase):
             time.sleep(1)
 
 
-@unittest.skipUnless(HAS_MYSQL, "Package mysql-python needs to be install to "
-                                "run this test.")
-class TestMySQLStorage(TestSQLiteStorage):
+class TestSQLiteStorage(StorageTestMethods, unittest.TestCase):
 
     def _create_storage(self):
-        self._engine = create_engine(
-            "mysql+mysqldb://root:@localhost/flask_blogging")
-        self._meta = sqla.MetaData()
-        self.storage = SQLAStorage(self._engine, metadata=self._meta)
-        self._meta.create_all(bind=self._engine)
+        app = flask.Flask(__name__)
+        temp_dir = tempfile.gettempdir()
+        self._dbfile = os.path.join(temp_dir, "temp.db")
+        app.config['SQLALCHEMY_DATABASE_URI'] ='sqlite:///'+self._dbfile
+        self._db = SQLAlchemy(app)
+        self.storage = SQLAStorageModel(self._db.engine)
+        self.engine = self._db.engine
+        self.metadata = MetaData(bind=self._db.engine, reflect=True)
 
     def tearDown(self):
-        metadata = sqla.MetaData()
-        metadata.reflect(bind=self._engine)
-        metadata.drop_all(bind=self._engine)
+        os.remove(self._dbfile)
+
+@unittest.skipUnless(HAS_MYSQL, "Package mysql-python needs to be install to "
+                                "run this test.")
+class TestMySQLStorage(StorageTestMethods, unittest.TestCase):
+
+    def _create_storage(self):
+        """
+        mysql root user needs to have a blank password
+        as this is not for production this is not an issue
+
+        mysqladmin -uroot -proot password ''
+        """
+        self.engine = create_engine(
+            "mysql+mysqldb://root@localhost/flask_blogging")
+        self.storage = SQLAStorageModel(self.engine)
+        self.metadata = MetaData(bind=self.engine, reflect=True)
+
+    def tearDown(self):
+        # myslq has issues with open transactions. calling session.close()
+        self.storage.close()
+        metadata = MetaData()
+        metadata.reflect(bind=self.engine)
+        metadata.drop_all(bind=self.engine)
 
 
 @unittest.skipUnless(HAS_POSTGRES, "Requires psycopg2 Postgres package")
-class TestPostgresStorage(TestSQLiteStorage):
+class TestPostgresStorage(StorageTestMethods, unittest.TestCase):
 
     def _create_storage(self):
-        self._engine = create_engine(
+        self.engine = create_engine(
             "postgresql+psycopg2://postgres:@localhost/flask_blogging")
-        self._meta = sqla.MetaData()
-        self.storage = SQLAStorage(self._engine, metadata=self._meta)
-        self._meta.create_all(bind=self._engine)
+        self.storage = SQLAStorageModel(self.engine)
+        self.metadata = MetaData(bind=self.engine, reflect=True)
 
     def tearDown(self):
-        metadata = sqla.MetaData()
-        metadata.reflect(bind=self._engine)
-        metadata.drop_all(bind=self._engine)
+        self.storage.close()
+        metadata = MetaData()
+        metadata.reflect(bind=self.engine)
+        metadata.drop_all(bind=self.engine)
 
 
 class TestSQLiteBinds(FlaskBloggingTestCase):
