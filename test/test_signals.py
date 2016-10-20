@@ -1,4 +1,5 @@
 import os
+import unittest
 from flask import current_app, redirect
 from test import FlaskBloggingTestCase, TestUser
 import tempfile
@@ -21,7 +22,7 @@ class SignalCountingBloggingEngine(BloggingEngine):
     ctr_posts_by_author = 0
 
 
-class TestSignals(FlaskBloggingTestCase):
+class TestSignals(FlaskBloggingTestCase, unittest.TestCase):
 
     def _create_storage(self):
         temp_dir = tempfile.gettempdir()
