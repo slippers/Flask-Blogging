@@ -9,7 +9,7 @@ from flask_blogging.sqlastorage import SQLAStorage
 from sqlalchemy import create_engine
 from test import FlaskBloggingTestCase
 import sqlalchemy as sqla
-from flask.ext.sqlalchemy import SQLAlchemy
+from flask_sqlalchemy import SQLAlchemy
 import time
 try:
     import _mysql
@@ -23,7 +23,7 @@ except ImportError:
     HAS_POSTGRES = False
 
 
-class TestSQLiteStorage(FlaskBloggingTestCase):
+class TestSQLiteStorage(FlaskBloggingTestCase, unittest.TestCase):
 
     def _create_storage(self):
         temp_dir = tempfile.gettempdir()
@@ -346,7 +346,7 @@ class TestPostgresStorage(TestSQLiteStorage):
         metadata.drop_all(bind=self._engine)
 
 
-class TestSQLiteBinds(FlaskBloggingTestCase):
+class TestSQLiteBinds(FlaskBloggingTestCase, unittest.TestCase):
 
     def _conn_string(self, dbfile):
         return 'sqlite:///'+dbfile

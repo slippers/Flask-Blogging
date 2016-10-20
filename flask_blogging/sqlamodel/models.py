@@ -1,4 +1,5 @@
 import datetime
+from sqlalchemy.ext.declarative import declarative_base, declared_attr
 from sqlalchemy import (
     Table,
     Column,
@@ -11,7 +12,18 @@ from sqlalchemy import (
     PrimaryKeyConstraint
 )
 from sqlalchemy.orm import relationship
-from . import Base
+
+
+class BaseModel(object):
+
+    __bind_key__ = 'DEFAULT'
+
+    @declared_attr
+    def __tablename__(cls):
+        return cls.__name__.lower()
+
+
+Base = declarative_base(cls=BaseModel)
 
 
 class Post(Base):

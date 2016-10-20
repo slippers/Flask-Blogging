@@ -16,6 +16,14 @@ class FlaskBloggingTestCase():
         def index():
             return "Hello World!"
 
+    def _create_storage(self):
+        raise NotImplementedError("Subclass must implement abstract method")
+
+    def tearDown(self):
+        raise NotImplementedError("Subclass must implement abstract method")
+
+
+
 
 class TestUser(UserMixin):
     def __init__(self, user_id):

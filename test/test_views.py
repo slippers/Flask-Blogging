@@ -2,6 +2,7 @@ try:
     from builtins import str, range
 except ImportError:
     pass
+import unittest
 import os
 import tempfile
 from flask import redirect, url_for, current_app
@@ -17,7 +18,7 @@ from flask_cache import Cache
 from .utils import get_random_unicode
 
 
-class TestViews(FlaskBloggingTestCase):
+class TestViews(FlaskBloggingTestCase, unittest.TestCase):
 
     def _create_storage(self):
         temp_dir = tempfile.gettempdir()

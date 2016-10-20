@@ -12,11 +12,12 @@ from .models import (
     Post,
     Tag,
     Tag_Posts,
-    User_Posts
+    User_Posts,
+    Base
 )
-from . import Base
 
-class SQLAStorageModel(Storage):
+
+class SQLAStorage(Storage):
     """
     The ``SQLAStorage`` implements the interface specified by the ``Storage``
     class. This  class uses SQLAlchemy to implement storage and retrieval of
