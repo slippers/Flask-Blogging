@@ -40,6 +40,8 @@ class SQLAStorage(Storage):
         if engine is None:
             raise ValueError('engine is required')
 
+        self._bind_key = bind_key
+
         self._engine = engine
 
         # __bind_key__ is a custom attribute set in the model
@@ -54,6 +56,33 @@ class SQLAStorage(Storage):
 
         # the models have inherited Base, we have imported base from there.
         Base.metadata.create_all(engine)
+
+
+    def _initialized(self):
+         sqla_initialized.send(self, engine=self._engine,
+                              table_prefix=None,
+                              meta=Base.metadata,
+                              bind=self._bind_key)
+
+    @property
+    def session(self):
+        return self._session
+
+    @property
+    def post_table(self):
+        return Post
+
+    @property
+    def tag_table(self):
+         return Tag
+
+    @property
+    def tag_posts_table(self):
+        return Tag_Posts
+
+    @property
+    def user_posts_table(self):
+        return User_Posts
 
     def close(self):
         """
