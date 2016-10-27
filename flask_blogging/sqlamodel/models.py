@@ -15,8 +15,7 @@ from sqlalchemy.orm import relationship
 
 
 class BaseModel(object):
-
-    __bind_key__ = 'DEFAULT'
+    __bind_key__ = None
 
     @declared_attr
     def __tablename__(cls):
