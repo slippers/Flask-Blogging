@@ -4,7 +4,7 @@ try:
     from builtins import range
 except ImportError:
     pass
-from flask_blogging.sqlamodel import SQLAStorage
+from flask_blogging.sqlamodel import SQLAStorage, FSQLAStorage
 from sqlalchemy import create_engine, MetaData
 from flask_sqlalchemy import SQLAlchemy
 import time
@@ -55,12 +55,9 @@ class TestPostgresBinds(StorageTestTables, unittest.TestCase):
             'blog': conn_string
         }
         self._db = SQLAlchemy(self.app)
-        self.engine = self._db.get_engine(self.app, bind="blog")
-        self.storage = SQLAStorage(self.engine, bind_key='blog')
-        self.metadata = MetaData(bind=self.engine, reflect=True)
+        self.storage = FSQLAStorage(self._db, bind_key='blog')
+        self.metadata = self._db.metadata
 
     def tearDown(self):
         self.storage.close()
-        metadata = MetaData()
-        metadata.reflect(bind=self.engine)
-        metadata.drop_all(bind=self.engine)
+        self._db.drop_all(bind='blog')
