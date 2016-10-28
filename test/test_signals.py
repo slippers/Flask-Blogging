@@ -1,7 +1,7 @@
 import os
 import unittest
 from flask import current_app, redirect
-from test import FlaskBloggingTestCase, TestUser
+from test import FlaskBloggingTestCase, UserLogin
 import tempfile
 from sqlalchemy import create_engine, MetaData
 from flask_blogging import SQLAStorage, BloggingEngine
@@ -50,13 +50,13 @@ class TestSignals(FlaskBloggingTestCase, unittest.TestCase):
         @self.login_manager.user_loader
         @self.engine.user_loader
         def load_user(user_id):
-            return TestUser(user_id)
+            return UserLogin(user_id)
 
         @self.app.route("/login/<username>/", methods=["POST"],
                         defaults={"blogger": 0})
         @self.app.route("/login/<username>/<int:blogger>/", methods=["POST"])
         def login(username, blogger):
-            this_user = TestUser(username)
+            this_user = UserLogin(username)
             login_user(this_user)
             if blogger:
                 identity_changed.send(current_app._get_current_object(),
