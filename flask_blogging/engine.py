@@ -8,7 +8,6 @@ except ImportError:
 from .processor import PostProcessor
 from flask_principal import Principal, Permission, RoleNeed
 from .signals import engine_initialised, post_processed, blueprint_created
-from flask_bootstrap import WebCDN
 
 
 class BloggingEngine(object):
@@ -98,7 +97,6 @@ class BloggingEngine(object):
         self.app.extensions["FLASK_BLOGGING_ENGINE"] = self  # duplicate
         self.app.extensions["blogging"] = self
         self.principal = Principal(self.app)
-        self.static_asset_loader()
         engine_initialised.send(self.app, engine=self)
 
     @property
@@ -156,19 +154,3 @@ class BloggingEngine(object):
     def get_user_name(cls, user):
         user_name = user.get_name() if hasattr(user, "get_name") else str(user)
         return user_name
-
-    def static_asset_loader(self):
-        if not self.config.get('BLOGGING_FLASK_BOOTSTRAP', False):
-            return
-        if 'bootstrap' not in self.app.extensions:
-            raise RuntimeError('Flask_Bootstrap extention not found.')
-
-        mathjax = WebCDN('//cdn.mathjax.org/mathjax/latest/')
-        markdown = WebCDN('//cdnjs.cloudflare.com/ajax/'
-                          'libs/markdown.js/0.5.0/')
-        bootstrap_markdown = WebCDN('//cdnjs.cloudflare.com/ajax/'
-                                    'libs/bootstrap-markdown/2.8.0/')
-        cdns = self.app.extensions['bootstrap']['cdns']
-        cdns['mathjax'] = mathjax
-        cdns['bootstrap-markdown'] = bootstrap_markdown
-        cdns['markdown'] = markdown
