@@ -1,78 +1,64 @@
 {% extends 'blogging/base.html' %}
+{% block extrastyle %}
+<link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-markdown/2.8.0/css/bootstrap-markdown.min.css"
+      rel="stylesheet"/>
+{% endblock extrastyle %}
+{% block main %}
+<form class="form-horizontal" action="{{url_for('blogging.editor', post_id=post_id or None)}}" method="POST">
 
-{% block title %}Editor{% endblock %}
+    {{ form.hidden_tag() }}
 
-{% block styles %}
-{{super()}}
-{% if config.BLOGGING_FLASK_BOOTSTRAP %} 
-<link href="{{bootstrap_find_resource('css/bootstrap-markdown.css', cdn='bootstrap-markdown', use_minified=True)}}" rel="stylesheet">
-{% else %}
-<link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-markdown/2.8.0/css/bootstrap-markdown.min.css" rel="stylesheet">
-{% endif %}
-{% endblock styles %}
-
-
-{% block content %}
-{{super()}}
-<div class="container">
-    <form class="form-horizontal" action="{{url_for('blogging.editor', post_id=post_id or None)}}" method="POST">
-
-        {{ form.hidden_tag() }}
-
-        <fieldset>
-            <!-- Form Name -->
-            <legend>Blog Editor</legend>
-            <!-- Text input-->
-            <div class="form-group">
-                <label class="control-label col-md-offset-2  control-label input-md" for="title">
-                    Title
-                </label>
-                <div class="input-group col-md-8 col-md-offset-2">
-                    {{form.title(placeholder="Title", id="title", class="form-control", required="" )}}
-                </div>
+    <fieldset>
+        <!-- Form Name -->
+        <legend>Blog Editor</legend>
+        <!-- Text input-->
+        <div class="form-group">
+            <label class="control-label col-md-offset-2  control-label input-md" for="title">
+                Title
+            </label>
+            <div class="input-group col-md-8 col-md-offset-2">
+                {{form.title(placeholder="Title", id="title", class="form-control", required="" )}}
             </div>
+        </div>
 
-            <div class="form-group">
-                <div class="input-group col-md-8 col-md-offset-2">
-                    {{form.text(placeholder="Blog text", required="", data_provide="markdown", rows="16")}}
-                    <span class="help-block">
-                        Learn more about <a href="http://en.wikipedia.org/wiki/Markdown" target="_blank">MarkDown</a>
-                    </span>
-                </div>
+        <div class="form-group">
+            <div class="input-group col-md-8 col-md-offset-2">
+                {{form.text(placeholder="Blog text", required="", data_provide="markdown", rows="16")}}
+                <span class="help-block">
+                    Learn more about <a href="http://en.wikipedia.org/wiki/Markdown" target="_blank">MarkDown</a>
+                </span>
             </div>
-            <!-- Text input-->
-            <div class="form-group">
-                <label class="col-md-offset-2 control-label" for="tags">Tags</label>
+        </div>
+        <!-- Text input-->
+        <div class="form-group">
+            <label class="col-md-offset-2 control-label" for="tags">Tags</label>
 
-                <div class="input-group col-md-8 col-md-offset-2">
-                    {{form.tags(id="tags", placeholder="Comma separated tags", class="form-control input-md", required="")}}
-                </div>
+            <div class="input-group col-md-8 col-md-offset-2">
+                {{form.tags(id="tags", placeholder="Comma separated tags", class="form-control input-md", required="")}}
             </div>
-            <!-- draft input-->
-            <!--div class="form-group">
+        </div>
+        <!-- draft input-->
+        <!--div class="form-group">
             <div class="col-md-offset-2">
                 <label>
                     {{form.draft(id="draft")}} draft?
                 </label>
             </div>
         </div-->
-            <div class="form-group">
-                <div class="col-md-offset-2">
-                    {{ form.submit(id="submit", class="btn btn-primary") }}
-                </div>
+        <div class="form-group">
+            <div class="col-md-offset-2">
+                {{ form.submit(id="submit", class="btn btn-primary") }}
             </div>
-        </fieldset>
-    </form>
-</div>
-{% endblock content %}
+        </div>
+    </fieldset>
+</form>
+{% endblock main %}
 
-{% block scripts %}
-{{super()}}
-{% if config.BLOGGING_FLASK_BOOTSTRAP %} 
-<script type="text/javascript" src="{{bootstrap_find_resource('js/bootstrap-markdown.js', cdn='bootstrap-markdown')}}"></script>
-<script type="text/javascript" src="{{bootstrap_find_resource('markdown.js', cdn='markdown', use_minified=True)}}"></script>
-{% else %}
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-markdown/2.8.0/js/bootstrap-markdown.min.js"></script>
-<script type="text/javascript"src="https://cdnjs.cloudflare.com/ajax/libs/markdown.js/0.5.0/markdown.min.js"></script>
-{% endif %}
-{% endblock scripts %}
+{% block extrajs %}
+    <script type="text/javascript"
+        src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-markdown/2.8.0/js/bootstrap-markdown.min.js">
+    </script>
+    <script type="text/javascript"
+        src="https://cdnjs.cloudflare.com/ajax/libs/markdown.js/0.5.0/markdown.min.js">
+    </script>
+{% endblock extrajs %}
