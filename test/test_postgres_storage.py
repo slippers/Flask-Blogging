@@ -31,16 +31,17 @@ class StorageTest():
 
 
 @unittest.skipUnless(HAS_POSTGRES, "Requires psycopg2 Postgres package")
-class TestPostgresStorageTables(StorageTest, StorageTestTables, unittest.TestCase):
+class TestPostgresStorageTables(StorageTest,
+                                StorageTestTables,
+                                unittest.TestCase):
+    pass
 
-    def dummy(self):
-        pass
 
 @unittest.skipUnless(HAS_POSTGRES, "Requires psycopg2 Postgres package")
-class TestPostgresStorageMethods(StorageTest, StorageTestMethods, unittest.TestCase):
-
-    def dummy(self):
-        pass
+class TestPostgresStorageMethods (StorageTest,
+                                  StorageTestMethods,
+                                  unittest.TestCase):
+    pass
 
 
 @unittest.skipUnless(HAS_POSTGRES, "Requires psycopg2 Postgres package")

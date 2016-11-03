@@ -7,7 +7,7 @@ except ImportError:
 from flask_blogging.sqlamodel import SQLAStorage, FSQLAStorage
 from sqlalchemy import create_engine, MetaData
 from flask_sqlalchemy import SQLAlchemy
-import time 
+import time
 try:
     import _mysql
     HAS_MYSQL = True
@@ -37,21 +37,21 @@ class StorageTest():
         metadata.drop_all(bind=self.engine)
 
 
+@unittest.skipUnless(HAS_MYSQL, "Package mysql-python needs to be install to "
+                                "run this test.")
+class TestMySQLStorageTables(StorageTest,
+                             StorageTestTables,
+                             unittest.TestCase):
+
+    pass
+
 
 @unittest.skipUnless(HAS_MYSQL, "Package mysql-python needs to be install to "
                                 "run this test.")
-class TestMySQLStorageTables(StorageTest, StorageTestTables, unittest.TestCase):
-
-    def dummy(self):
-        pass
-
-@unittest.skipUnless(HAS_MYSQL, "Package mysql-python needs to be install to "
-                                "run this test.")
-class TestMySQLStorageMethods(StorageTest, StorageTestMethods, unittest.TestCase):
-
-    def dummy(self):
-        pass
-
+class TestMySQLStorageMethods (StorageTest,
+                               StorageTestMethods,
+                               unittest.TestCase):
+    pass
 
 
 @unittest.skipUnless(HAS_MYSQL, "Package mysql-python needs to be install to "

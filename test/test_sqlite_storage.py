@@ -23,18 +23,19 @@ class StorageTest():
 
     def tearDown(self):
         os.remove(self._dbfile)
-
-
-class TestSQLiteStorageTables(StorageTest, StorageTestTables, unittest.TestCase):
-
-    def dummy(self):
         pass
 
 
-class TestSQLiteStorageMethods(StorageTest, StorageTestMethods, unittest.TestCase):
+class TestSQLiteStorageTables(StorageTest,
+                              StorageTestTables,
+                              unittest.TestCase):
+    pass
 
-    def dummy(self):
-        pass
+
+class TestSQLiteStorageMethods(StorageTest,
+                               StorageTestMethods,
+                               unittest.TestCase):
+    pass
 
 
 class TestSQLiteBinds(StorageTestTables, unittest.TestCase):

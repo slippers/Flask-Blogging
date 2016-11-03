@@ -46,7 +46,6 @@ class StorageTestTables(FlaskBloggingTestCase):
         self.check_table(table_name, expected_columns)
 
 
-
 class StorageTestMethods(FlaskBloggingTestCase):
 
     def setUp(self):
@@ -100,7 +99,7 @@ class StorageTestMethods(FlaskBloggingTestCase):
             statement = table.insert().values(tag_id=1, post_id=1)
             self.assertRaises(IntegrityError, conn.execute, statement)
 
-    def test_user_post_uniqueness(self): 
+    def test_user_post_uniqueness(self):
         pid = self.storage.save_post(title="Title1", text="Sample Text",
                                      user_id="testuser",
                                      tags=["hello", "world"])
@@ -273,5 +272,3 @@ class StorageTestMethods(FlaskBloggingTestCase):
                                    text="Sample Text%d" % i,
                                    user_id=user, tags=tags)
             time.sleep(1)
-
-
