@@ -6,9 +6,7 @@ import logging
 from sqlalchemy import select, desc, func, and_, not_
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.declarative import (
-    declarative_base
-)
+from sqlalchemy.ext.declarative import declarative_base
 from ..storage import Storage
 from ..signals import sqla_initialized
 from .models import (
@@ -58,10 +56,10 @@ class SQLAStorage(Storage):
         Base.metadata.create_all(engine)
 
         sqla_initialized.send(self,
-                               engine=self._engine,
-                               table_prefix=prefix,
-                               meta=Base.metadata,
-                               bind=bind_key)
+                              engine=self._engine,
+                              table_prefix=prefix,
+                              meta=Base.metadata,
+                              bind=bind_key)
 
     @property
     def session(self):
@@ -73,7 +71,7 @@ class SQLAStorage(Storage):
 
     @property
     def tag(self):
-         return self.Tag
+        return self.Tag
 
     @property
     def tag_posts(self):
@@ -85,7 +83,8 @@ class SQLAStorage(Storage):
 
     def close(self):
         """
-        each time session.commit() is called an implict transaction is newly created.
+        each time session.commit() is called an
+        implict transaction is newly created.
         this sqlalchemy behavior causes an issue with issuing DDL
         commands in newer versions of mysql.
         error 'Waiting for table metadata lock'
@@ -130,12 +129,17 @@ class SQLAStorage(Storage):
 
         try:
             # validate post_id
-            post = self._session.query(self.Post).filter(self.Post.id==post_id).one_or_none()
+            post = self._session.query(self.Post) \
+                    .filter(self.Post.id == post_id).one_or_none()
 
             post_id_exists = post is not None
 
             if not post_id_exists:
-                post = self.Post(title, text, draft, post_date, last_modified_date)
+                post = self.Post(title,
+                                 text,
+                                 draft,
+                                 post_date,
+                                 last_modified_date)
                 self._session.add(post)
             else:
                 post.update(title, text, draft, post_date, last_modified_date)
@@ -165,7 +169,9 @@ class SQLAStorage(Storage):
 
         r = None
 
-        post = self._session.query(self.Post).filter(self.Post.id == post_id).one_or_none()
+        post = self._session.query(self.Post) \
+                            .filter(self.Post.id == post_id) \
+                            .one_or_none()
 
         if not post:
             return r
@@ -211,7 +217,7 @@ class SQLAStorage(Storage):
             else self.Post.post_date
         user_id = str(user_id) if user_id else user_id
 
-        posts =  self._session.query(self.Post.id)
+        posts = self._session.query(self.Post.id)
 
         posts = posts.order_by(ordering)
 
@@ -264,7 +270,9 @@ class SQLAStorage(Storage):
          otherwise.
         """
         try:
-            post = self._session.query(self.Post).filter(self.Post.id == post_id).one_or_none()
+            post = self._session.query(self.Post) \
+                       .filter(self.Post.id == post_id) \
+                       .one_or_none()
             if post:
                 self._session.delete(post)
                 self._session.commit()
@@ -280,7 +288,9 @@ class SQLAStorage(Storage):
         filters = []
         if tag:
             tag = tag.upper()
-            current_tag = self._session.query(self.Tag).filter(self.Tag.text == tag).one()
+            current_tag = self._session.query(self.Tag) \
+                              .filter(self.Tag.text == tag) \
+                              .one()
 
             if current_tag:
                 tag_id = current_tag.id
@@ -310,10 +320,12 @@ class SQLAStorage(Storage):
         tag_ids = []
 
         # get Tag for tags already stored
-        current = self._session.query(self.Tag).filter(self.Tag.text.in_(tags)).all()
+        current = self._session.query(self.Tag) \
+                      .filter(self.Tag.text.in_(tags)) \
+                      .all()
         current_tags = [tag.text for tag in current]
 
-        # subtract tags current from tags that are new. 
+        # subtract tags current from tags that are new.
         new_tags = set(tags) - set(current_tags)
 
         # store tags that were not found
@@ -334,12 +346,15 @@ class SQLAStorage(Storage):
 
     def _save_tag_posts(self, tags, post_id):
         # get tag records
-        tag_result = self._session.query(self.Tag).filter(self.Tag.text.in_(tags)).all()
+        tag_result = self._session.query(self.Tag) \
+                         .filter(self.Tag.text.in_(tags)) \
+                         .all()
         tag_ids = [tag.id for tag in tag_result]
 
         # get Tag_Posts for current post_id
         tag_posts_result = self._session.query(self.Tag_Posts) \
-                .filter(self.Tag_Posts.post_id == post_id).all()
+                               .filter(self.Tag_Posts.post_id == post_id) \
+                               .all()
         tag_post_ids = [tag_post.tag_id for tag_post in tag_posts_result]
 
         # delete tag_posts
@@ -351,13 +366,15 @@ class SQLAStorage(Storage):
         # perform delete and insert
         try:
             if delete_tag_posts:
-               self._session.query(self.Tag_Posts) \
-                        .filter(self.Tag_Posts.post_id==post_id) \
-                        .filter(self.Tag_Posts.tag_id.in_(list(delete_tag_posts))) \
-                        .delete(synchronize_session=False)
-               self._session.commit()
+                self._session.query(self.Tag_Posts) \
+                             .filter(self.Tag_Posts.post_id == post_id) \
+                             .filter(self.Tag_Posts.tag_id
+                                     .in_(list(delete_tag_posts))) \
+                             .delete(synchronize_session=False)
+                self._session.commit()
             if new_tag_posts:
-                tag_posts = [self.Tag_Posts(tag_id=tag, post_id=post_id) for tag in new_tag_posts]
+                tag_posts = [self.Tag_Posts(tag_id=tag, post_id=post_id)
+                             for tag in new_tag_posts]
                 self._session.bulk_save_objects(tag_posts)
                 self._session.commit()
         except IntegrityError as e:
@@ -376,7 +393,8 @@ class SQLAStorage(Storage):
                     .one_or_none()
 
             if not user_posts:
-                new_user_posts = self.User_Posts(user_id=user_id, post_id=post_id)
+                new_user_posts = self.User_Posts(user_id=user_id,
+                                                 post_id=post_id)
                 self._session.add(new_user_posts)
                 self._session.commit()
             else:
