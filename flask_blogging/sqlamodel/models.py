@@ -1,5 +1,9 @@
 import datetime
-from sqlalchemy.ext.declarative import declarative_base, declared_attr
+from sqlalchemy.ext.declarative import (
+    declarative_base,
+    declared_attr,
+    as_declarative
+)
 from sqlalchemy import (
     Table,
     Column,
@@ -14,85 +18,117 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 
-class BaseModel(object):
-    __bind_key__ = None
-
-    @declared_attr
-    def __tablename__(cls):
-        return cls.__name__.lower()
-
-
-Base = declarative_base(cls=BaseModel)
+def table_dict(prefix=None):
+    if prefix is None:
+        prefix=''
+    tables = ['Post','Tag', 'Tag_Posts', 'User_Posts']
+    return {t:prefix.lower()+t.lower() for t in tables}
 
 
-class Post(Base):
-    id = Column(Integer, primary_key=True)
-    title = Column(String(256))
-    text = Column(Text)
-    post_date = Column(DateTime)
-    last_modified_date = Column(DateTime)
+def Post_Table(Base, prefix=None, bind_key=None):
+    d=table_dict(prefix)
 
-    # if 1 then make it a draft
-    draft = Column(SmallInteger, default=0)
+    class Post(Base):
+        __tablename__ = d['Post']
+        __bind_key__ = bind_key
+        id = Column(Integer, primary_key=True)
+        title = Column(String(256))
+        text = Column(Text)
+        post_date = Column(DateTime)
+        last_modified_date = Column(DateTime)
 
-    tag_posts = relationship('Tag_Posts',
-                             back_populates='post',
-                             cascade="all, delete-orphan")
+        # if 1 then make it a draft
+        draft = Column(SmallInteger, default=0)
 
-    user_posts = relationship('User_Posts',
-                              uselist=False,
-                              back_populates='post',
-                              cascade="all, delete-orphan")
+        tag_posts = relationship('Tag_Posts',
+                                 back_populates=d['Post'],
+                                 cascade="all, delete-orphan")
 
-    def __init__(self, title, text,
-                 draft=False,
-                 post_date=None,
-                 last_modified_date=None):
-        self.update(title, text, draft, post_date, last_modified_date)
+        user_posts = relationship('User_Posts',
+                                  uselist=False,
+                                  back_populates=d['Post'],
+                                  cascade="all, delete-orphan")
 
-    def update(self, title, text,
-               draft=False,
-               post_date=None,
-               last_modified_date=None):
-        current_datetime = datetime.datetime.utcnow()
-        if post_date is not None:
-            self.post_date = post_date
-        else:
-            self.post_date = current_datetime
+        def __init__(self, title, text,
+                     draft=False,
+                     post_date=None,
+                     last_modified_date=None):
+            self.update(title, text, draft, post_date, last_modified_date)
 
-        if last_modified_date is not None:
-            self.last_modified_date = last_modified_date
-        else:
-            self.last_modified_date = current_datetime
-        self.title = title
-        self.text = text
-        self.draft = 1 if draft is True else 0
+        def update(self, title, text,
+                   draft=False,
+                   post_date=None,
+                   last_modified_date=None):
+            current_datetime = datetime.datetime.utcnow()
+            if post_date is not None:
+                self.post_date = post_date
+            else:
+                self.post_date = current_datetime
 
+            if last_modified_date is not None:
+                self.last_modified_date = last_modified_date
+            else:
+                self.last_modified_date = current_datetime
+            self.title = title
+            self.text = text
+            self.draft = 1 if draft is True else 0
 
-class Tag(Base):
-    id = Column(Integer, primary_key=True)
-    text = Column(String(128), unique=True, index=True)
-
-    def __init__(self, text):
-        self.text = text.upper()
-
-
-class Tag_Posts(Base):
-    tag_id = Column(Integer, ForeignKey('tag.id', ondelete='CASCADE'), primary_key=True )
-    tag = relationship(Tag, backref='tag')
-
-    post_id = Column(Integer, ForeignKey('post.id', ondelete='CASCADE'), primary_key=True)
-    post = relationship(Post, backref='post')
+    return Post
 
 
-    def __init__(self, post_id, tag_id):
-        self.post_id = post_id
-        self.tag_id = tag_id
+def Tag_Table(Base, prefix=None, bind_key=None):
+    d=table_dict(prefix)
 
-class User_Posts(Base):
-    user_id = Column(String(128), index=True, primary_key=True)
-    post_id = Column(Integer, ForeignKey('post.id', ondelete='CASCADE'), primary_key=True )
-    post = relationship(Post)
+    class Tag(Base):
+        __tablename__ = d['Tag']
+        __bind_key__ = bind_key
+        id = Column(Integer, primary_key=True)
+        text = Column(String(128), unique=True, index=True)
 
-    def update(self, user_id):
-        self.user_id = user_id
+        def __init__(self, text):
+            self.text = text.upper()
+
+    return Tag
+
+
+def Tag_Posts_Table(Base, prefix=None, bind_key=None):
+    d=table_dict(prefix)
+
+    class Tag_Posts(Base):
+        __tablename__ = d['Tag_Posts']
+        __bind_key__ = bind_key
+
+        tag_id = Column(Integer,
+                        ForeignKey(d['Tag']+'.id', ondelete='CASCADE'),
+                        primary_key=True )
+        tag = relationship('Tag', backref=d['Tag'])
+
+        post_id = Column(Integer,
+                         ForeignKey(d['Post']+'.id', ondelete='CASCADE'),
+                         primary_key=True)
+        post = relationship('Post', backref=d['Post'])
+
+        def __init__(self, post_id, tag_id):
+            self.post_id = post_id
+            self.tag_id = tag_id
+
+    return Tag_Posts
+
+
+def User_Posts_Table(Base, prefix=None, bind_key=None):
+    d=table_dict(prefix)
+
+    class User_Posts(Base):
+        __tablename__ = d['User_Posts']
+        __bind_key__ = bind_key
+
+        user_id = Column(String(128), index=True, primary_key=True)
+        post_id = Column(Integer,
+                         ForeignKey(d['Post']+'.id', ondelete='CASCADE'),
+                         primary_key=True )
+        post = relationship('Post')
+
+        def update(self, user_id):
+            self.user_id = user_id
+
+    return User_Posts
