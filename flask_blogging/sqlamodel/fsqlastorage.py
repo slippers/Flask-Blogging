@@ -17,6 +17,9 @@ class FSQLAStorage(SQLAStorage):
 
         engine = db.get_engine(db.get_app(), bind=bind_key)
 
-        SQLAStorage.__init__(self, engine=engine, prefix=prefix, bind_key=bind_key)
+        SQLAStorage.__init__(self,
+                             engine=engine,
+                             prefix=prefix,
+                             bind_key=bind_key)
 
         db.metadata.reflect(engine)

@@ -20,13 +20,13 @@ from sqlalchemy.orm import relationship
 
 def table_dict(prefix=None):
     if prefix is None:
-        prefix=''
-    tables = ['Post','Tag', 'Tag_Posts', 'User_Posts']
-    return {t:prefix.lower()+t.lower() for t in tables}
+        prefix = ''
+    tables = ['Post', 'Tag', 'Tag_Posts', 'User_Posts']
+    return {t: prefix.lower()+t.lower() for t in tables}
 
 
 def Post_Table(Base, prefix=None, bind_key=None):
-    d=table_dict(prefix)
+    d = table_dict(prefix)
 
     class Post(Base):
         __tablename__ = d['Post']
@@ -77,7 +77,7 @@ def Post_Table(Base, prefix=None, bind_key=None):
 
 
 def Tag_Table(Base, prefix=None, bind_key=None):
-    d=table_dict(prefix)
+    d = table_dict(prefix)
 
     class Tag(Base):
         __tablename__ = d['Tag']
@@ -92,7 +92,7 @@ def Tag_Table(Base, prefix=None, bind_key=None):
 
 
 def Tag_Posts_Table(Base, prefix=None, bind_key=None):
-    d=table_dict(prefix)
+    d = table_dict(prefix)
 
     class Tag_Posts(Base):
         __tablename__ = d['Tag_Posts']
@@ -100,7 +100,7 @@ def Tag_Posts_Table(Base, prefix=None, bind_key=None):
 
         tag_id = Column(Integer,
                         ForeignKey(d['Tag']+'.id', ondelete='CASCADE'),
-                        primary_key=True )
+                        primary_key=True)
         tag = relationship('Tag', backref=d['Tag'])
 
         post_id = Column(Integer,
@@ -116,7 +116,7 @@ def Tag_Posts_Table(Base, prefix=None, bind_key=None):
 
 
 def User_Posts_Table(Base, prefix=None, bind_key=None):
-    d=table_dict(prefix)
+    d = table_dict(prefix)
 
     class User_Posts(Base):
         __tablename__ = d['User_Posts']
@@ -125,7 +125,7 @@ def User_Posts_Table(Base, prefix=None, bind_key=None):
         user_id = Column(String(128), index=True, primary_key=True)
         post_id = Column(Integer,
                          ForeignKey(d['Post']+'.id', ondelete='CASCADE'),
-                         primary_key=True )
+                         primary_key=True)
         post = relationship('Post')
 
         def update(self, user_id):
