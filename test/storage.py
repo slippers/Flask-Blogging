@@ -1,85 +1,56 @@
+import unittest
 try:
     from builtins import range
 except ImportError:
     pass
 import unittest
-import tempfile
 import os
-from flask_blogging.sqlastorage import SQLAStorage
-from sqlalchemy import create_engine
+import flask
+from flask_blogging.sqlamodel import SQLAStorage
+from sqlalchemy import create_engine, MetaData
+from sqlalchemy.exc import IntegrityError
 from test import FlaskBloggingTestCase
-import sqlalchemy as sqla
-from flask_sqlalchemy import SQLAlchemy
 import time
-try:
-    import _mysql
-    HAS_MYSQL = True
-except ImportError:
-    HAS_MYSQL = False
-try:
-    import psycopg2
-    HAS_POSTGRES = True
-except ImportError:
-    HAS_POSTGRES = False
 
 
-class TestSQLiteStorage(FlaskBloggingTestCase, unittest.TestCase):
-
-    def _create_storage(self):
-        temp_dir = tempfile.gettempdir()
-        self._dbfile = os.path.join(temp_dir, "temp.db")
-        self._engine = create_engine('sqlite:///'+self._dbfile)
-        self._meta = sqla.MetaData()
-        self.storage = SQLAStorage(self._engine, metadata=self._meta)
-        self._meta.create_all(bind=self._engine)
+class StorageTestTables(FlaskBloggingTestCase):
 
     def setUp(self):
         FlaskBloggingTestCase.setUp(self)
         self._create_storage()
 
-    def tearDown(self):
-        os.remove(self._dbfile)
+    def check_table(self, table_name, expected_columns):
+        table = self.metadata.tables[table_name]
+        columns = [t.name for t in table.columns]
+        self.assertListEqual(columns, expected_columns)
 
     def test_post_table_exists(self):
         table_name = "post"
-        with self._engine.begin() as conn:
-            self.assertTrue(conn.dialect.has_table(conn, table_name))
-            metadata = self._meta
-            table = metadata.tables[table_name]
-            columns = [t.name for t in table.columns]
-            expected_columns = ['id', 'title', 'text', 'post_date',
-                                'last_modified_date', 'draft']
-            self.assertListEqual(columns, expected_columns)
+        expected_columns = ['id', 'title', 'text', 'post_date',
+                            'last_modified_date', 'draft']
+        self.check_table(table_name, expected_columns)
 
     def test_tag_table_exists(self):
         table_name = "tag"
-        with self._engine.begin() as conn:
-            self.assertTrue(conn.dialect.has_table(conn, table_name))
-            metadata = self._meta
-            table = metadata.tables[table_name]
-            columns = [t.name for t in table.columns]
-            expected_columns = ['id', 'text']
-            self.assertListEqual(columns, expected_columns)
+        expected_columns = ['id', 'text']
+        self.check_table(table_name, expected_columns)
 
     def test_tag_post_table_exists(self):
         table_name = "tag_posts"
-        with self._engine.begin() as conn:
-            self.assertTrue(conn.dialect.has_table(conn, table_name))
-            metadata = self._meta
-            table = metadata.tables[table_name]
-            columns = [t.name for t in table.columns]
-            expected_columns = ['tag_id', 'post_id']
-            self.assertListEqual(columns, expected_columns)
+        expected_columns = ['tag_id', 'post_id']
+        self.check_table(table_name, expected_columns)
 
     def test_user_post_table_exists(self):
         table_name = "user_posts"
-        with self._engine.begin() as conn:
-            self.assertTrue(conn.dialect.has_table(conn, table_name))
-            metadata = self._meta
-            table = metadata.tables[table_name]
-            columns = [t.name for t in table.columns]
-            expected_columns = ['user_id', 'post_id']
-            self.assertListEqual(columns, expected_columns)
+        expected_columns = ['user_id', 'post_id']
+        self.check_table(table_name, expected_columns)
+
+
+class StorageTestMethods(FlaskBloggingTestCase):
+
+    def setUp(self):
+        FlaskBloggingTestCase.setUp(self)
+        self._create_storage()
 
     def test_user_post_table_consistency(self):
         # check if the user post table updates the user_id
@@ -97,15 +68,14 @@ class TestSQLiteStorage(FlaskBloggingTestCase, unittest.TestCase):
 
     def test_tags_uniqueness(self):
         table_name = "tag"
-        metadata = self._meta
-        table = metadata.tables[table_name]
-        with self._engine.begin() as conn:
+        table = self.metadata.tables[table_name]
+        with self.engine.begin() as conn:
             statement = table.insert().values(text="test_tag")
             conn.execute(statement)
         # reentering same tag should raise exception
-        with self._engine.begin() as conn:
+        with self.engine.begin() as conn:
             statement = table.insert().values(text="test_tag")
-            self.assertRaises(sqla.exc.IntegrityError, conn.execute, statement)
+            self.assertRaises(IntegrityError, conn.execute, statement)
 
     def test_tags_consistency(self):
         # check that when tag is updated, the posts get updated
@@ -124,37 +94,28 @@ class TestSQLiteStorage(FlaskBloggingTestCase, unittest.TestCase):
         self.storage.save_post(title="Title", text="Sample Text",
                                user_id="user", tags=["tags"])
         table_name = "tag_posts"
-        metadata = self._meta
-        table = metadata.tables[table_name]
-        with self._engine.begin() as conn:
+        table = self.metadata.tables[table_name]
+        with self.engine.begin() as conn:
             statement = table.insert().values(tag_id=1, post_id=1)
-            self.assertRaises(sqla.exc.IntegrityError, conn.execute, statement)
+            self.assertRaises(IntegrityError, conn.execute, statement)
 
     def test_user_post_uniqueness(self):
         pid = self.storage.save_post(title="Title1", text="Sample Text",
                                      user_id="testuser",
                                      tags=["hello", "world"])
         table_name = "user_posts"
-        metadata = sqla.MetaData()
-        metadata.reflect(bind=self._engine)
-        table = metadata.tables[table_name]
+        table = self.metadata.tables[table_name]
         # reentering same user should raise exception
-        with self._engine.begin() as conn:
+        with self.engine.begin() as conn:
             statement = table.insert().values(user_id="testuser",
                                               post_id=pid)
-            self.assertRaises(sqla.exc.IntegrityError, conn.execute, statement)
-
-    def test_bind_database(self):
-        # self.storage._create_all_tables()
-        self.test_post_table_exists()
-        self.test_tag_table_exists()
-        self.test_tag_post_table_exists()
-        self.test_user_post_table_exists()
+            self.assertRaises(IntegrityError, conn.execute, statement)
 
     def test_save_post(self):
         pid = self.storage.save_post(title="Title1", text="Sample Text",
                                      user_id="testuser",
                                      tags=["hello", "world"])
+
         pid = self.storage.save_post(title="Title1", text="Sample Text",
                                      user_id="testuser",
                                      tags=["hello", "world"], post_id=1)
@@ -311,122 +272,3 @@ class TestSQLiteStorage(FlaskBloggingTestCase, unittest.TestCase):
                                    text="Sample Text%d" % i,
                                    user_id=user, tags=tags)
             time.sleep(1)
-
-
-@unittest.skipUnless(HAS_MYSQL, "Package mysql-python needs to be install to "
-                                "run this test.")
-class TestMySQLStorage(TestSQLiteStorage):
-
-    def _create_storage(self):
-        self._engine = create_engine(
-            "mysql+mysqldb://root:@localhost/flask_blogging")
-        self._meta = sqla.MetaData()
-        self.storage = SQLAStorage(self._engine, metadata=self._meta)
-        self._meta.create_all(bind=self._engine)
-
-    def tearDown(self):
-        metadata = sqla.MetaData()
-        metadata.reflect(bind=self._engine)
-        metadata.drop_all(bind=self._engine)
-
-
-@unittest.skipUnless(HAS_POSTGRES, "Requires psycopg2 Postgres package")
-class TestPostgresStorage(TestSQLiteStorage):
-
-    def _create_storage(self):
-        self._engine = create_engine(
-            "postgresql+psycopg2://postgres:@localhost/flask_blogging")
-        self._meta = sqla.MetaData()
-        self.storage = SQLAStorage(self._engine, metadata=self._meta)
-        self._meta.create_all(bind=self._engine)
-
-    def tearDown(self):
-        metadata = sqla.MetaData()
-        metadata.reflect(bind=self._engine)
-        metadata.drop_all(bind=self._engine)
-
-
-class TestSQLiteBinds(FlaskBloggingTestCase, unittest.TestCase):
-
-    def _conn_string(self, dbfile):
-        return 'sqlite:///'+dbfile
-
-    def setUp(self):
-        FlaskBloggingTestCase.setUp(self)
-
-        temp_dir = tempfile.gettempdir()
-        self._dbfile = os.path.join(temp_dir, "temp.db")
-        conn_string = self._conn_string(self._dbfile)
-        self.app.config["SQLALCHEMY_BINDS"] = {
-            'blog': conn_string
-        }
-        self._db = SQLAlchemy(self.app)
-        self.storage = SQLAStorage(db=self._db, bind="blog")
-        self._engine = self._db.get_engine(self.app, bind="blog")
-        self._meta = self._db.metadata
-        self._db.create_all(bind=["blog"])
-
-    def tearDown(self):
-        os.remove(self._dbfile)
-
-    def test_post_table_exists(self):
-        table_name = "post"
-        with self._engine.begin() as conn:
-            self.assertTrue(conn.dialect.has_table(conn, table_name))
-            metadata = self._meta
-            table = metadata.tables[table_name]
-            columns = [t.name for t in table.columns]
-            expected_columns = ['id', 'title', 'text', 'post_date',
-                                'last_modified_date', 'draft']
-            self.assertListEqual(columns, expected_columns)
-
-    def test_tag_table_exists(self):
-        table_name = "tag"
-        with self._engine.begin() as conn:
-            self.assertTrue(conn.dialect.has_table(conn, table_name))
-            metadata = self._meta
-            table = metadata.tables[table_name]
-            columns = [t.name for t in table.columns]
-            expected_columns = ['id', 'text']
-            self.assertListEqual(columns, expected_columns)
-
-    def test_tag_post_table_exists(self):
-        table_name = "tag_posts"
-        with self._engine.begin() as conn:
-            self.assertTrue(conn.dialect.has_table(conn, table_name))
-            metadata = self._meta
-            table = metadata.tables[table_name]
-            columns = [t.name for t in table.columns]
-            expected_columns = ['tag_id', 'post_id']
-            self.assertListEqual(columns, expected_columns)
-
-    def test_user_post_table_exists(self):
-        table_name = "user_posts"
-        with self._engine.begin() as conn:
-            self.assertTrue(conn.dialect.has_table(conn, table_name))
-            metadata = self._meta
-            table = metadata.tables[table_name]
-            columns = [t.name for t in table.columns]
-            expected_columns = ['user_id', 'post_id']
-            self.assertListEqual(columns, expected_columns)
-
-
-@unittest.skipUnless(HAS_MYSQL, "Package mysql-python needs to be install to "
-                                "run this test.")
-class TestMySQLBinds(TestSQLiteBinds):
-
-    def _conn_string(self, dbfile):
-        return "mysql+mysqldb://root:@localhost/flask_blogging"
-
-    def tearDown(self):
-        pass
-
-
-@unittest.skipUnless(HAS_POSTGRES, "Requires psycopg2 Postgres package")
-class TestPostgresBinds(TestSQLiteBinds):
-
-    def _conn_string(self, dbfile):
-        return "postgresql+psycopg2://postgres:@localhost/flask_blogging"
-
-    def tearDown(self):
-        pass

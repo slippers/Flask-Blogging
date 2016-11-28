@@ -1,11 +1,10 @@
-import unittest
 from flask import Flask
 from flask_login import UserMixin
 
 __author__ = 'gbalaraman'
 
 
-class FlaskBloggingTestCase(unittest.TestCase):
+class FlaskBloggingTestCase():
 
     def setUp(self):
         self.app = Flask(__name__)
@@ -17,7 +16,13 @@ class FlaskBloggingTestCase(unittest.TestCase):
         def index():
             return "Hello World!"
 
+    def _create_storage(self):
+        raise NotImplementedError("Subclass must implement abstract method")
 
-class TestUser(UserMixin):
+    def tearDown(self):
+        raise NotImplementedError("Subclass must implement abstract method")
+
+
+class UserLogin(UserMixin):
     def __init__(self, user_id):
         self.id = user_id

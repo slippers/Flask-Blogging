@@ -1,0 +1,58 @@
+import unittest
+from .storage import StorageTestMethods, StorageTestTables
+try:
+    from builtins import range
+except ImportError:
+    pass
+import tempfile
+import os
+from flask_blogging.sqlamodel import SQLAStorage, FSQLAStorage
+from sqlalchemy import create_engine, MetaData
+from flask_sqlalchemy import SQLAlchemy
+import time
+
+
+class StorageTest():
+
+    def _create_storage(self):
+        temp_dir = tempfile.gettempdir()
+        self._dbfile = os.path.join(temp_dir, "temp.db")
+        self.engine = create_engine('sqlite:///'+self._dbfile)
+        self.storage = SQLAStorage(self.engine)
+        self.metadata = MetaData(bind=self.engine, reflect=True)
+
+    def tearDown(self):
+        os.remove(self._dbfile)
+        pass
+
+
+class TestSQLiteStorageTables(StorageTest,
+                              StorageTestTables,
+                              unittest.TestCase):
+    pass
+
+
+class TestSQLiteStorageMethods(StorageTest,
+                               StorageTestMethods,
+                               unittest.TestCase):
+    pass
+
+
+class TestSQLiteBinds(StorageTestTables, unittest.TestCase):
+
+    def _conn_string(self, dbfile):
+        return 'sqlite:///'+dbfile
+
+    def _create_storage(self):
+        temp_dir = tempfile.gettempdir()
+        self._dbfile = os.path.join(temp_dir, "blog.db")
+        conn_string = self._conn_string(self._dbfile)
+        self.app.config["SQLALCHEMY_BINDS"] = {
+            'blog': conn_string
+        }
+        self._db = SQLAlchemy(self.app)
+        self.storage = FSQLAStorage(self._db, bind_key='blog')
+        self.metadata = self._db.metadata
+
+    def tearDown(self):
+        os.remove(self._dbfile)

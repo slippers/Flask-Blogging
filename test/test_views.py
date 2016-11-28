@@ -2,6 +2,7 @@ try:
     from builtins import str, range
 except ImportError:
     pass
+import unittest
 import os
 import tempfile
 from flask import redirect, url_for, current_app
@@ -9,7 +10,7 @@ from flask_login import LoginManager, login_user, logout_user, current_user
 from sqlalchemy import create_engine, MetaData
 from flask_blogging.sqlastorage import SQLAStorage
 from flask_blogging import BloggingEngine
-from test import FlaskBloggingTestCase, TestUser
+from test import FlaskBloggingTestCase, UserLogin
 import re
 from flask_principal import identity_changed, Identity, \
     AnonymousIdentity, identity_loaded, RoleNeed, UserNeed
@@ -17,7 +18,7 @@ from flask_cache import Cache
 from .utils import get_random_unicode
 
 
-class TestViews(FlaskBloggingTestCase):
+class TestViews(FlaskBloggingTestCase, unittest.TestCase):
 
     def _create_storage(self):
         temp_dir = tempfile.gettempdir()
@@ -46,13 +47,13 @@ class TestViews(FlaskBloggingTestCase):
         @self.login_manager.user_loader
         @self.engine.user_loader
         def load_user(user_id):
-            return TestUser(user_id)
+            return UserLogin(user_id)
 
         @self.app.route("/login/<username>/", methods=["POST"],
                         defaults={"blogger": 0})
         @self.app.route("/login/<username>/<int:blogger>/", methods=["POST"])
         def login(username, blogger):
-            this_user = TestUser(username)
+            this_user = UserLogin(username)
             login_user(this_user)
             if blogger:
                 identity_changed.send(current_app._get_current_object(),
