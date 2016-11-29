@@ -191,6 +191,7 @@ class SQLAStorage(Storage):
 
     def get_posts(self, count=10, offset=0, recent=True, tag=None,
                   user_id=None, include_draft=False):
+
         """
         Get posts given by filter criteria
 
@@ -227,7 +228,8 @@ class SQLAStorage(Storage):
             posts = posts.filter(sql_filter)
         if count:
             posts = posts.limit(count)
-        if offset:
+        if offset > 0:
+            print('offset', offset)
             posts = posts.offset(offset)
 
         try:
