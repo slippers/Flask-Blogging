@@ -229,7 +229,6 @@ class SQLAStorage(Storage):
         if count:
             posts = posts.limit(count)
         if offset > 0:
-            print('offset', offset)
             posts = posts.offset(offset)
 
         try:
